@@ -1,0 +1,13 @@
+# Terraform
+terraform/terraform.tfvars
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+
+# Lambda ビルド成果物
+.build/
+
+# 個人用設定
+.claude/
+.vscode/
