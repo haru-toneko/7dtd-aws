@@ -21,7 +21,7 @@ Lambda: discord_worker     ← EC2起動/停止/状態取得 → Discordにフ�
 Lambda: auto_stop          ← EventBridge 5分毎に起動
   │ SSM RunCommand
   ▼
-EC2 (m7i-flex.large)       ← Docker + カスタムイメージ (ubuntu:20.04 + libgcc-s1)
+EC2 (m7i-flex.large)       ← Docker + カスタムイメージ (ubuntu:20.04 + libgcc-s1 + ca-certificates)
   │
   └─ EBS 30GB              ← ゲームデータ永続化 (インスタンス停止後も保持)
 ```
@@ -440,22 +440,26 @@ aws ssm get-command-invocation --command-id "$CMD_ID" \
 
 ```bash
 # 手動セットアップ再実行（インスタンスが起動中であること）
+# SteamCMD tarball でダウンロード → Assembly パッチ → サービス起動
 CMD_ID=$(aws ssm send-command \
   --instance-ids "$INSTANCE_ID" \
   --document-name AWS-RunShellScript \
   --parameters 'commands=[
-    "chown -R steam:steam /data/7dtd",
-    "sudo -Hu steam /usr/games/steamcmd +force_install_dir /data/7dtd/server +login anonymous +app_update 294420 validate +quit",
-    "systemctl daemon-reload",
-    "systemctl enable 7dtd",
-    "systemctl start 7dtd",
+    "mkdir -p /opt/steamcmd",
+    "curl -sqL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar zxf - -C /opt/steamcmd",
+    "mkdir -p /data/7dtd/server",
+    "/opt/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType linux +force_install_dir /data/7dtd/server +login anonymous +app_update 294420 validate +quit",
+    "pip3 install dnfile",
+    "python3 /opt/7dtd/patch_assembly.py",
+    "systemctl daemon-reload && systemctl enable 7dtd && systemctl start 7dtd",
     "systemctl status 7dtd --no-pager"
   ]' \
+  --timeout-seconds 3600 \
   --region ap-northeast-1 \
   --query "Command.CommandId" --output text)
 
 echo "CommandId: $CMD_ID"
-echo "20〜30分後に以下で結果確認:"
+echo "20〜40分後に以下で結果確認:"
 echo "aws ssm get-command-invocation --command-id $CMD_ID --instance-id $INSTANCE_ID --region ap-northeast-1 --query StandardOutputContent --output text"
 ```
 

@@ -106,8 +106,6 @@ if [ ! -f /data/7dtd/config/serverconfig.xml ]; then
 
   <!-- ゲーム設定 -->
   <property name="GameWorld"                   value="$GAME_WORLD"/>
-  <property name="WorldGenSeed"                value="AsphaltValleyAB3"/>
-  <property name="WorldGenSize"                value="8192"/>
   <property name="GameName"                    value="Friends"/>
   <property name="GameMode"                    value="GameModeSurvival"/>
   <property name="GameDifficulty"              value="2"/>
@@ -212,8 +210,24 @@ chmod +x /opt/7dtd/check_players.py
 echo "$TELNET_PASSWORD" > /opt/7dtd/.telnet_pass
 chmod 600 /opt/7dtd/.telnet_pass
 
+# ─── SteamCMD で 7DTD ダウンロード ───────────────────────────────────────────
+# apt版(i386依存で遅い)の代わりにValve公式tarballを直接取得する
+echo "[INFO] SteamCMDをインストール..."
+mkdir -p /opt/steamcmd
+curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
+  | tar zxf - -C /opt/steamcmd
+
+echo "[INFO] 7DTDをダウンロード中 (初回は20〜40分かかります)..."
+mkdir -p /data/7dtd/server
+/opt/steamcmd/steamcmd.sh \
+  +@sSteamCmdForcePlatformType linux \
+  +force_install_dir /data/7dtd/server \
+  +login anonymous \
+  +app_update 294420 validate \
+  +quit
+echo "[INFO] 7DTDダウンロード完了"
+
 # ─── Docker カスタムイメージビルド ───────────────────────────────────────────
-# SteamCMDで7DTDをダウンロード済みの /data/7dtd/server を前提とする
 # ubuntu:20.04 + libgcc-s1 + ca-certificates (ca-certificates がないと Steam SDK が SSL 接続できず
 # GameServer.LogOn timed out になり Steam 認証が通らない)
 mkdir -p /opt/7dtd
