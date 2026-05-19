@@ -13,7 +13,10 @@ echo "[$(date)] Starting 7DTD server setup (Docker)..."
 
 # ─── 基本パッケージ ───────────────────────────────────────────────────────────
 apt-get update -y
-apt-get install -y ca-certificates curl awscli netcat-openbsd
+# libc6-i386: steamcmd_linux.tar.gz の linux32/steamcmd は 32bit ELF のため必須
+dpkg --add-architecture i386
+apt-get update -y
+apt-get install -y ca-certificates curl awscli netcat-openbsd libc6-i386
 
 # ─── Docker インストール ──────────────────────────────────────────────────────
 echo "[INFO] Dockerをインストール..."
