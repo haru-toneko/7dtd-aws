@@ -255,9 +255,9 @@ game_data_volume_id = "vol-0xxxxxxxxxxxxxxxxx"
 Terraform は EC2 を起動した状態で作成する。Discord から起動できるよう、初回のみ手動で停止する。
 
 > **重要:** terraform apply 直後に停止してはいけない。  
-> EC2 初回起動時に user_data.sh が自動実行され、7DTD サーバー本体（約 8GB）を SteamCMD でダウンロードする。  
+> EC2 初回起動時に user_data.sh が自動実行され、7DTD サーバー本体（約 16GB）を SteamCMD でダウンロードする。  
 > **完了前に停止すると download が中断され、再起動しても再開されない**（cloud-init は初回のみ実行）。  
-> セットアップ完了まで **20〜40 分** かかる。
+> セットアップ完了まで **30〜50 分** かかる（Docker・libc6-i386 のインストール + SteamCMD bootstrap + 7DTD ダウンロード）。
 
 ### 7-1. セットアップ完了を確認する
 
@@ -440,16 +440,19 @@ aws ssm get-command-invocation --command-id "$CMD_ID" \
 
 ```bash
 # 手動セットアップ再実行（インスタンスが起動中であること）
-# SteamCMD tarball でダウンロード → Assembly パッチ → サービス起動
+# libc6-i386: steamcmd の linux32/steamcmd は 32bit ELF のため必須
+# SteamCMD bootstrap → +quit で自己更新 → 7DTD ダウンロード → Assembly パッチ → サービス起動
 CMD_ID=$(aws ssm send-command \
   --instance-ids "$INSTANCE_ID" \
   --document-name AWS-RunShellScript \
   --parameters 'commands=[
-    "mkdir -p /opt/steamcmd",
+    "dpkg --add-architecture i386 && apt-get update -y -q && apt-get install -y libc6-i386",
+    "rm -rf /opt/steamcmd && mkdir -p /opt/steamcmd",
     "curl -sqL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar zxf - -C /opt/steamcmd",
+    "/opt/steamcmd/steamcmd.sh +quit 2>/dev/null || true",
     "mkdir -p /data/7dtd/server",
     "/opt/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType linux +force_install_dir /data/7dtd/server +login anonymous +app_update 294420 validate +quit",
-    "pip3 install dnfile",
+    "pip3 install dnfile -q",
     "python3 /opt/7dtd/patch_assembly.py",
     "systemctl daemon-reload && systemctl enable 7dtd && systemctl start 7dtd",
     "systemctl status 7dtd --no-pager"
@@ -462,6 +465,9 @@ echo "CommandId: $CMD_ID"
 echo "20〜40分後に以下で結果確認:"
 echo "aws ssm get-command-invocation --command-id $CMD_ID --instance-id $INSTANCE_ID --region ap-northeast-1 --query StandardOutputContent --output text"
 ```
+
+> **注意:** SteamCMD は `+quit` 実行後でも "Missing configuration" で失敗することがある。  
+> その場合は最後の `+app_update` コマンドをもう一度実行すると成功する。
 
 ### サーバーが起動直後にクラッシュする / ログが少ない行数で止まる
 
