@@ -301,8 +301,7 @@ RestartSec=30
 ExecStartPre=-/usr/bin/docker stop 7dtd
 ExecStartPre=-/usr/bin/docker rm 7dtd
 ExecStart=/usr/bin/docker run --name 7dtd --rm \
-  -p 26900:26900/tcp -p 26900:26900/udp -p 26901:26901/udp \
-  -p 26902:26902/udp -p 8081:8081/tcp \
+  --network=host \
   -v /data/7dtd/server:/server \
   -v /data/7dtd/config:/config \
   -v /data/7dtd/userdata:/root/.local/share/7DaysToDie \
