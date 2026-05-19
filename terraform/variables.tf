@@ -41,9 +41,9 @@ variable "max_players" {
 }
 
 variable "game_world" {
-  description = "ゲームワールド名 (Navezgane or RWG)"
+  description = "ゲームワールド名 (Pregen06k01/Pregen06k02/Pregen08k01/Pregen08k02/Navezgane) ※RWGはrwgmixerバグで使用不可"
   type        = string
-  default     = "Navezgane"
+  default     = "Pregen08k01"
 }
 
 variable "auto_stop_idle_minutes" {

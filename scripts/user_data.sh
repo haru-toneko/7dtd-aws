@@ -9,21 +9,25 @@ AWS_REGION="${aws_region}"
 
 LOG=/var/log/7dtd-setup.log
 exec > >(tee -a "$LOG") 2>&1
-echo "[$(date)] Starting 7DTD server setup..."
+echo "[$(date)] Starting 7DTD server setup (Docker)..."
 
 # ─── 基本パッケージ ───────────────────────────────────────────────────────────
 apt-get update -y
 apt-get install -y ca-certificates curl awscli netcat-openbsd
 
-# ─── SteamCMD インストール ────────────────────────────────────────────────────
-echo "[INFO] SteamCMDをインストール..."
-add-apt-repository multiverse -y
-dpkg --add-architecture i386
+# ─── Docker インストール ──────────────────────────────────────────────────────
+echo "[INFO] Dockerをインストール..."
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+  https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  > /etc/apt/sources.list.d/docker.list
 apt-get update -y
-# Steam EULA を事前承認（非対話インストールに必要）
-echo "steamcmd steam/question select I AGREE" | debconf-set-selections
-echo "steamcmd steam/license note ''" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y steamcmd
+apt-get install -y docker-ce docker-ce-cli containerd.io
+systemctl enable docker
+systemctl start docker
 
 # ─── EBSボリューム マウント ───────────────────────────────────────────────────
 EBS_DEV=""
@@ -51,7 +55,9 @@ if ! grep -q "$EBS_DEV" /etc/fstab; then
   echo "$EBS_DEV /data ext4 defaults,nofail 0 2" >> /etc/fstab
 fi
 
-mkdir -p /data/7dtd/saves
+# コンテナのマウント先
+mkdir -p /data/7dtd/config
+mkdir -p /data/7dtd/userdata
 
 # ─── SSMからシークレット取得 ──────────────────────────────────────────────────
 echo "[INFO] SSMからパスワード取得..."
@@ -70,9 +76,11 @@ TELNET_PASSWORD=$(aws ssm get-parameter \
   --region "$AWS_REGION")
 
 # ─── serverconfig.xml 生成 ────────────────────────────────────────────────────
-if [ ! -f /data/7dtd/serverconfig.xml ]; then
+# コンテナ内のパス /config/serverconfig.xml に対応する場所に生成する
+# SaveGameFolder はコンテナ内パスで指定する
+if [ ! -f /data/7dtd/config/serverconfig.xml ]; then
   echo "[INFO] serverconfig.xml を生成..."
-  cat > /data/7dtd/serverconfig.xml << XMLEOF
+  cat > /data/7dtd/config/serverconfig.xml << XMLEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <ServerSettings>
   <!-- サーバー基本設定 -->
@@ -82,14 +90,12 @@ if [ ! -f /data/7dtd/serverconfig.xml ]; then
   <property name="ServerPassword"              value="$SERVER_PASSWORD"/>
   <property name="ServerLoginConfirmationText" value=""/>
   <property name="Region"                      value="Worldwide"/>
-  <property name="Language"                    value="English"/>
+  <property name="Language"                    value="Japanese"/>
 
   <!-- ネットワーク -->
   <property name="ServerPort"                  value="26900"/>
   <property name="ServerVisibility"            value="2"/>
-  <property name="NetworkingProtocol"          value="LiteNetLib"/>
   <property name="ServerDisabledNetworkProtocols" value="SteamNetworking"/>
-  <property name="MaxUncoveredMapChunks"       value="131072"/>
 
   <!-- プレイヤー -->
   <property name="ServerMaxPlayerCount"        value="$MAX_PLAYERS"/>
@@ -101,17 +107,15 @@ if [ ! -f /data/7dtd/serverconfig.xml ]; then
   <!-- ゲーム設定 -->
   <property name="GameWorld"                   value="$GAME_WORLD"/>
   <property name="WorldGenSeed"                value="AsphaltValleyAB3"/>
-  <property name="WorldGenSize"                value="6144"/>
+  <property name="WorldGenSize"                value="8192"/>
   <property name="GameName"                    value="Friends"/>
   <property name="GameMode"                    value="GameModeSurvival"/>
   <property name="GameDifficulty"              value="2"/>
 
-  <!-- Telnet (自動停止用) -->
+  <!-- Telnet (自動停止用) コンテナ内ポートをホストの8081にマッピング -->
   <property name="TelnetEnabled"               value="true"/>
   <property name="TelnetPort"                  value="8081"/>
   <property name="TelnetPassword"              value="$TELNET_PASSWORD"/>
-  <property name="TelnetFailedLoginLimit"      value="10"/>
-  <property name="TelnetFailedLoginsBlockTime" value="10"/>
 
   <!-- Web管理パネル (無効) -->
   <property name="WebDashboardEnabled"         value="false"/>
@@ -129,7 +133,6 @@ if [ ! -f /data/7dtd/serverconfig.xml ]; then
   <property name="DropOnQuit"                  value="0"/>
   <property name="PlayerKillingMode"           value="0"/>
 
-  <property name="SaveGameFolder"              value="/data/7dtd/saves"/>
 </ServerSettings>
 XMLEOF
 fi
@@ -209,37 +212,103 @@ chmod +x /opt/7dtd/check_players.py
 echo "$TELNET_PASSWORD" > /opt/7dtd/.telnet_pass
 chmod 600 /opt/7dtd/.telnet_pass
 
-# ─── 7DTD 専用サーバー インストール (SteamCMD) ───────────────────────────────
-echo "[INFO] 7DTDサーバーをSteamCMDでダウンロード..."
+# ─── Docker カスタムイメージビルド ───────────────────────────────────────────
+# SteamCMDで7DTDをダウンロード済みの /data/7dtd/server を前提とする
+# ubuntu:20.04 + libgcc-s1 のみ (7DTD 2.6 動作確認済み)
+mkdir -p /opt/7dtd
+cat > /opt/7dtd/Dockerfile << 'DOCKEREOF'
+FROM ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y libgcc-s1 && rm -rf /var/lib/apt/lists/*
+DOCKEREOF
+docker build -t 7dtd-local:latest /opt/7dtd/
 
-# steam ユーザー作成（存在しなければ）
-id steam &>/dev/null || useradd -m -s /bin/bash steam
+# ─── Assembly-CSharp.dll パッチ ───────────────────────────────────────────────
+# 7DTD 2.6 の Unity MonoBehaviour 初期化順序バグを修正する
+# GameOptionsManager の静的コンストラクタから呼ばれる ValidateFoV/ValidateFoV3P が
+# GamePrefs 未初期化時にクラッシュするため、この2メソッドのみ noop に差し替える。
+# GUIWindowManager.Awake は noop にしてはいけない（シングルトン未初期化で
+# GameManager.Awake が NullRef を起こしてサーバーが起動しなくなる）。
+pip3 install dnfile 2>/dev/null || true
+cat > /opt/7dtd/patch_assembly.py << 'PYEOF2'
+import dnfile, shutil, struct, sys
+path = '/data/7dtd/server/7DaysToDieServer_Data/Managed/Assembly-CSharp.dll'
+dn = dnfile.dnPE(path)
+with open(path, 'rb') as f:
+    data = bytearray(f.read())
+def rva2off(rva):
+    for s in dn.sections:
+        va = s.VirtualAddress
+        if va <= rva < va + s.SizeOfRawData:
+            return rva - va + s.PointerToRawData
+    return None
+TARGETS = {
+    'GameOptionsManager': ['ValidateFoV', 'ValidateFoV3P'],
+}
+typedefs = dn.net.mdtables.TypeDef.rows
+methoddefs = dn.net.mdtables.MethodDef.rows
+patched = []
+for i, trow in enumerate(typedefs):
+    tname = str(trow.TypeName)
+    if tname not in TARGETS: continue
+    method_refs = trow.MethodList
+    target_methods = TARGETS[tname]
+    for mref in method_refs:
+        try: mrow = mref.row
+        except AttributeError:
+            try:
+                idx = mref.row_index - 1
+                mrow = methoddefs[idx]
+            except: continue
+        mname = str(mrow.Name)
+        if mname not in target_methods: continue
+        rva = mrow.Rva
+        if not isinstance(rva, int): rva = int(rva)
+        if rva == 0: continue
+        off = rva2off(rva)
+        if off is None: continue
+        hdr = data[off]; fmt = hdr & 0x3
+        if fmt == 0x2:
+            data[off] = 0x06; data[off + 1] = 0x2A
+            print(f'PATCH-TINY {tname}.{mname} @ {off:#x}')
+        elif fmt == 0x3:
+            data[off] = 0x06; data[off + 1] = 0x2A
+            print(f'PATCH-FAT->TINY {tname}.{mname} @ {off:#x}')
+        else: continue
+        patched.append(f'{tname}.{mname}')
+print(f'Patched {len(patched)}: {patched}')
+if not patched: sys.exit(1)
+shutil.copy(path, path + '.bak')
+with open(path, 'wb') as f: f.write(data)
+print('Done.')
+PYEOF2
 
-mkdir -p /data/7dtd/server
-chown -R steam:steam /data/7dtd
+if [ -f /data/7dtd/server/7DaysToDieServer_Data/Managed/Assembly-CSharp.dll ]; then
+  python3 /opt/7dtd/patch_assembly.py
+fi
 
-# SteamCMD で匿名ダウンロード (App ID 294420 = 7DTD Dedicated Server)
-sudo -u steam /usr/games/steamcmd \
-  +force_install_dir /data/7dtd/server \
-  +login anonymous \
-  +app_update 294420 validate \
-  +quit
-
-echo "[INFO] ダウンロード完了"
-
-# ─── systemd サービス登録 ─────────────────────────────────────────────────────
+# ─── systemd サービス登録 (Docker コンテナ管理) ──────────────────────────────
 cat > /etc/systemd/system/7dtd.service << 'SVCEOF'
 [Unit]
-Description=7 Days to Die Dedicated Server
-After=network.target
+Description=7 Days to Die Dedicated Server (Docker ubuntu:20.04)
+After=docker.service network-online.target
+Requires=docker.service
 
 [Service]
 Type=simple
-User=steam
-WorkingDirectory=/data/7dtd/server
-ExecStart=/data/7dtd/server/startserver.sh -configfile=/data/7dtd/serverconfig.xml
 Restart=on-failure
 RestartSec=30
+ExecStartPre=-/usr/bin/docker stop 7dtd
+ExecStartPre=-/usr/bin/docker rm 7dtd
+ExecStart=/usr/bin/docker run --name 7dtd --rm \
+  -p 26900:26900/tcp -p 26900:26900/udp -p 26901:26901/udp \
+  -p 26902:26902/udp -p 8081:8081/tcp \
+  -v /data/7dtd/server:/server \
+  -v /data/7dtd/config:/config \
+  -v /data/7dtd/userdata:/root/.local/share/7DaysToDie \
+  -w /server 7dtd-local:latest \
+  /server/startserver.sh -configfile=/config/serverconfig.xml
+ExecStop=/usr/bin/docker stop 7dtd
 StandardOutput=journal
 StandardError=journal
 
