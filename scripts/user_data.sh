@@ -218,9 +218,15 @@ mkdir -p /opt/steamcmd
 curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
   | tar zxf - -C /opt/steamcmd
 
+# 初回実行: linux32/steamcmd のブートストラップだけ行う。
+# steamcmd.sh は linux32/steamcmd をダウンロードしてから exec するが、
+# ダウンロード完了前に exec が走り "No such file or directory" で失敗することがある。
+# || true で失敗を無視し、ダウンロードが完了するまで待ってから本番を実行する。
+/opt/steamcmd/steamcmd.sh +quit 2>/dev/null || true
+sleep 10
+
 echo "[INFO] 7DTDをダウンロード中 (初回は20〜40分かかります)..."
 mkdir -p /data/7dtd/server
-# 初回実行で linux32/steamcmd のブートストラップが失敗することがあるため最大3回リトライ
 for attempt in 1 2 3; do
   echo "[INFO] SteamCMD 試行 $attempt/3..."
   /opt/steamcmd/steamcmd.sh \
@@ -230,7 +236,7 @@ for attempt in 1 2 3; do
     +app_update 294420 validate \
     +quit && break
   echo "[WARN] SteamCMD 試行 $attempt 失敗。リトライします..."
-  sleep 10
+  sleep 30
 done
 echo "[INFO] 7DTDダウンロード完了"
 
