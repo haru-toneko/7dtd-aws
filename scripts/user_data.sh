@@ -213,18 +213,25 @@ chmod 600 /opt/7dtd/.telnet_pass
 # ─── SteamCMD で 7DTD ダウンロード ───────────────────────────────────────────
 # apt版(i386依存で遅い)の代わりにValve公式tarballを直接取得する
 echo "[INFO] SteamCMDをインストール..."
+rm -rf /opt/steamcmd
 mkdir -p /opt/steamcmd
 curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" \
   | tar zxf - -C /opt/steamcmd
 
 echo "[INFO] 7DTDをダウンロード中 (初回は20〜40分かかります)..."
 mkdir -p /data/7dtd/server
-/opt/steamcmd/steamcmd.sh \
-  +@sSteamCmdForcePlatformType linux \
-  +force_install_dir /data/7dtd/server \
-  +login anonymous \
-  +app_update 294420 validate \
-  +quit
+# 初回実行で linux32/steamcmd のブートストラップが失敗することがあるため最大3回リトライ
+for attempt in 1 2 3; do
+  echo "[INFO] SteamCMD 試行 $attempt/3..."
+  /opt/steamcmd/steamcmd.sh \
+    +@sSteamCmdForcePlatformType linux \
+    +force_install_dir /data/7dtd/server \
+    +login anonymous \
+    +app_update 294420 validate \
+    +quit && break
+  echo "[WARN] SteamCMD 試行 $attempt 失敗。リトライします..."
+  sleep 10
+done
 echo "[INFO] 7DTDダウンロード完了"
 
 # ─── Docker カスタムイメージビルド ───────────────────────────────────────────
