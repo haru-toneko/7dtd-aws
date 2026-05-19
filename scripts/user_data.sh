@@ -214,12 +214,13 @@ chmod 600 /opt/7dtd/.telnet_pass
 
 # ─── Docker カスタムイメージビルド ───────────────────────────────────────────
 # SteamCMDで7DTDをダウンロード済みの /data/7dtd/server を前提とする
-# ubuntu:20.04 + libgcc-s1 のみ (7DTD 2.6 動作確認済み)
+# ubuntu:20.04 + libgcc-s1 + ca-certificates (ca-certificates がないと Steam SDK が SSL 接続できず
+# GameServer.LogOn timed out になり Steam 認証が通らない)
 mkdir -p /opt/7dtd
 cat > /opt/7dtd/Dockerfile << 'DOCKEREOF'
 FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y libgcc-s1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libgcc-s1 ca-certificates && rm -rf /var/lib/apt/lists/*
 DOCKEREOF
 docker build -t 7dtd-local:latest /opt/7dtd/
 
