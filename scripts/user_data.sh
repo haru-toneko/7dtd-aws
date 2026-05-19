@@ -230,6 +230,7 @@ sleep 10
 
 echo "[INFO] 7DTDをダウンロード中 (初回は20〜40分かかります)..."
 mkdir -p /data/7dtd/server
+# SteamCMD は失敗時も exit 0 を返すため startserver.sh の存在でダウンロード成否を判定する
 for attempt in 1 2 3; do
   echo "[INFO] SteamCMD 試行 $attempt/3..."
   /opt/steamcmd/steamcmd.sh \
@@ -237,10 +238,18 @@ for attempt in 1 2 3; do
     +force_install_dir /data/7dtd/server \
     +login anonymous \
     +app_update 294420 validate \
-    +quit && break
-  echo "[WARN] SteamCMD 試行 $attempt 失敗。リトライします..."
+    +quit
+  if [ -f /data/7dtd/server/startserver.sh ]; then
+    echo "[INFO] 7DTDダウンロード成功"
+    break
+  fi
+  echo "[WARN] SteamCMD 試行 $attempt 失敗 (startserver.sh なし)。${30}秒後にリトライ..."
   sleep 30
 done
+if [ ! -f /data/7dtd/server/startserver.sh ]; then
+  echo "[ERROR] 7DTDダウンロードが3回とも失敗しました"
+  exit 1
+fi
 echo "[INFO] 7DTDダウンロード完了"
 
 # ─── Docker カスタムイメージビルド ───────────────────────────────────────────
