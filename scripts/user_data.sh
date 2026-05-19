@@ -249,7 +249,7 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
   sleep 60
 done
 if [ ! -f /data/7dtd/server/startserver.sh ]; then
-  echo "[ERROR] 7DTDダウンロードが${MAX_ATTEMPTS}回とも失敗しました"
+  echo "[ERROR] 7DTDダウンロードが$${MAX_ATTEMPTS}回とも失敗しました"
   exit 1
 fi
 echo "[INFO] 7DTDダウンロード完了"

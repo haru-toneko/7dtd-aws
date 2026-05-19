@@ -87,15 +87,20 @@ resource "aws_iam_role_policy" "lambda_permissions" {
       {
         Sid    = "SSMRunCommand"
         Effect = "Allow"
-        Action = [
-          "ssm:SendCommand",
-          "ssm:GetCommandInvocation",
-          "ssm:ListCommandInvocations"
-        ]
+        Action = ["ssm:SendCommand"]
         Resource = [
           "arn:aws:ssm:${var.aws_region}::document/AWS-RunShellScript",
           "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:instance/*"
         ]
+      },
+      {
+        Sid    = "SSMGetCommandInvocation"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetCommandInvocation",
+          "ssm:ListCommandInvocations"
+        ]
+        Resource = "*"
       },
       {
         Sid    = "SSMParams"
