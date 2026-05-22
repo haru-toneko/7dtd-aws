@@ -41,6 +41,7 @@ resource "aws_lambda_function" "discord_worker" {
       DISCORD_APPLICATION_ID = var.discord_application_id
       BOT_TOKEN_PARAM        = aws_ssm_parameter.discord_bot_token.name
       NOTIFIER_LAMBDA_ARN    = aws_lambda_function.game_ready_notifier.arn
+      IDLE_PARAM_NAME        = aws_ssm_parameter.idle_minutes.name
     }
   }
 

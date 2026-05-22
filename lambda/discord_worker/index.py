@@ -17,6 +17,7 @@ AWS_REGION = os.environ['AWS_ACCOUNT_REGION']
 DISCORD_APPLICATION_ID = os.environ['DISCORD_APPLICATION_ID']
 BOT_TOKEN_PARAM = os.environ['BOT_TOKEN_PARAM']
 NOTIFIER_LAMBDA_ARN = os.environ.get('NOTIFIER_LAMBDA_ARN', '')
+IDLE_PARAM_NAME = os.environ.get('IDLE_PARAM_NAME', '')
 
 ec2 = boto3.client('ec2', region_name=AWS_REGION)
 ssm = boto3.client('ssm', region_name=AWS_REGION)
@@ -219,6 +220,16 @@ def edit_original_response(token: str, content: str) -> None:
         print(f"Discord API error: {e.code} {e.read()}")
 
 # ─── Notifier ────────────────────────────────────────────────────────────────
+
+def reset_idle_counter() -> None:
+    """起動時に auto_stop のアイドルカウンターをリセットする。"""
+    if not IDLE_PARAM_NAME:
+        return
+    try:
+        ssm.put_parameter(Name=IDLE_PARAM_NAME, Value='0', Type='String', Overwrite=True)
+    except Exception as e:
+        print(f"reset_idle_counter failed: {e}")
+
 
 def invoke_notifier(token: str, ip: str) -> None:
     """game_ready_notifier Lambda を非同期で呼び出す。"""
@@ -437,6 +448,7 @@ def handle_start(token: str, data: dict) -> None:
         return
 
     # stopped → 起動
+    reset_idle_counter()
     ec2.start_instances(InstanceIds=[INSTANCE_ID])
     if xml_settings:
         edit_original_response(token, 'サーバーを起動中... 設定も適用します。')
