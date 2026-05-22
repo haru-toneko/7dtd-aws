@@ -78,7 +78,7 @@ def check_game_ready() -> bool:
             InstanceIds=[INSTANCE_ID],
             DocumentName='AWS-RunShellScript',
             Parameters={'commands': commands},
-            TimeoutSeconds=15,
+            TimeoutSeconds=30,
         )
         command_id = resp['Command']['CommandId']
     except ClientError as e:
