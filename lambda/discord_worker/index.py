@@ -16,9 +16,11 @@ INSTANCE_ID = os.environ['INSTANCE_ID']
 AWS_REGION = os.environ['AWS_ACCOUNT_REGION']
 DISCORD_APPLICATION_ID = os.environ['DISCORD_APPLICATION_ID']
 BOT_TOKEN_PARAM = os.environ['BOT_TOKEN_PARAM']
+NOTIFIER_LAMBDA_ARN = os.environ.get('NOTIFIER_LAMBDA_ARN', '')
 
 ec2 = boto3.client('ec2', region_name=AWS_REGION)
 ssm = boto3.client('ssm', region_name=AWS_REGION)
+lambda_client = boto3.client('lambda', region_name=AWS_REGION)
 
 DISCORD_API = 'https://discord.com/api/v10'
 
@@ -150,6 +152,21 @@ def edit_original_response(token: str, content: str) -> None:
             pass
     except urllib.error.HTTPError as e:
         print(f"Discord API error: {e.code} {e.read()}")
+
+# ─── Notifier ────────────────────────────────────────────────────────────────
+
+def invoke_notifier(token: str, ip: str) -> None:
+    """game_ready_notifier Lambda を非同期で呼び出す。"""
+    if not NOTIFIER_LAMBDA_ARN:
+        return
+    try:
+        lambda_client.invoke(
+            FunctionName=NOTIFIER_LAMBDA_ARN,
+            InvocationType='Event',
+            Payload=json.dumps({'token': token, 'ip': ip}).encode(),
+        )
+    except Exception as e:
+        print(f"invoke_notifier failed: {e}")
 
 # ─── EC2 ─────────────────────────────────────────────────────────────────────
 
@@ -344,11 +361,12 @@ def handle_start(token: str, data: dict) -> None:
             ip = info['public_ip']
             edit_original_response(token, f'サーバーはすでに起動中です。\nIP: `{ip}:26900`')
             return
+        ip = info['public_ip']
         edit_original_response(token, '設定を更新してサーバーを再起動しています...\n⚠️ 接続中のプレイヤーは切断されます。')
         ok, err = apply_settings(xml_settings)
         if ok:
-            ip = info['public_ip']
-            edit_original_response(token, f'設定を更新し再起動しました。\nIP: `{ip}:26900`\n※再起動完了まで1〜2分かかります。')
+            edit_original_response(token, f'再起動しました。ゲームの準備ができたら通知します。\nIP: `{ip}:26900`')
+            invoke_notifier(token, ip)
         else:
             edit_original_response(token, f'設定更新に失敗しました: {err}')
         return
@@ -358,7 +376,7 @@ def handle_start(token: str, data: dict) -> None:
     if xml_settings:
         edit_original_response(token, 'サーバーを起動中... 設定も適用します。')
     else:
-        edit_original_response(token, 'サーバーを起動しています... (最大2分かかります)')
+        edit_original_response(token, 'サーバーを起動しています...')
 
     ip = wait_for_state('running', timeout_sec=180)
     if not ip:
@@ -367,12 +385,12 @@ def handle_start(token: str, data: dict) -> None:
 
     if xml_settings:
         ok, err = apply_settings(xml_settings)
-        if ok:
-            edit_original_response(token, f'サーバーが起動し、設定を適用しました!\nIP: `{ip}:26900`\n※ゲームが完全に起動するまでさらに3〜5分かかります。')
-        else:
+        if not ok:
             edit_original_response(token, f'サーバーは起動しましたが設定の適用に失敗しました: {err}\nIP: `{ip}:26900`')
-    else:
-        edit_original_response(token, f'サーバーが起動しました!\nIP: `{ip}:26900`\n\n※ゲームが完全に起動するまでさらに3〜5分かかります。')
+            return
+
+    edit_original_response(token, f'EC2が起動しました。ゲームの準備ができたら通知します。\nIP: `{ip}:26900`')
+    invoke_notifier(token, ip)
 
 
 def handle_set(token: str, data: dict) -> None:
@@ -396,11 +414,12 @@ def handle_set(token: str, data: dict) -> None:
         )
         return
 
+    ip = info['public_ip']
     edit_original_response(token, '設定を更新しています...\n⚠️ 接続中のプレイヤーは切断されます。')
     ok, err = apply_settings(xml_settings)
     if ok:
-        ip = info['public_ip']
-        edit_original_response(token, f'設定を更新しました。サーバーを再起動しています。\nIP: `{ip}:26900`\n※再起動完了まで1〜2分かかります。')
+        edit_original_response(token, f'再起動しました。ゲームの準備ができたら通知します。\nIP: `{ip}:26900`')
+        invoke_notifier(token, ip)
     else:
         edit_original_response(token, f'設定更新に失敗しました: {err}')
 

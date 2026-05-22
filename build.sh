@@ -34,6 +34,12 @@ mkdir -p "$BUILD_DIR/auto_stop"
 cp "$SCRIPT_DIR/lambda/auto_stop/index.py" "$BUILD_DIR/auto_stop/index.py"
 echo "  auto_stop: OK"
 
+# ─── game_ready_notifier ─────────────────────────────────────────────────────
+echo "==> game_ready_notifier をビルド..."
+mkdir -p "$BUILD_DIR/game_ready_notifier"
+cp "$SCRIPT_DIR/lambda/game_ready_notifier/index.py" "$BUILD_DIR/game_ready_notifier/index.py"
+echo "  game_ready_notifier: OK"
+
 echo ""
 echo "==> ビルド完了。次のコマンドでTerraformを適用してください:"
 echo "  cd terraform && terraform init && terraform apply"

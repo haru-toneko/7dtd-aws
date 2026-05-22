@@ -39,3 +39,9 @@ data "archive_file" "auto_stop" {
   source_dir  = "${path.module}/../.build/auto_stop"
   output_path = "${path.module}/../.build/auto_stop.zip"
 }
+
+data "archive_file" "game_ready_notifier" {
+  type        = "zip"
+  source_dir  = "${path.module}/../.build/game_ready_notifier"
+  output_path = "${path.module}/../.build/game_ready_notifier.zip"
+}

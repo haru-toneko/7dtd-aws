@@ -40,6 +40,7 @@ resource "aws_lambda_function" "discord_worker" {
       AWS_ACCOUNT_REGION     = var.aws_region
       DISCORD_APPLICATION_ID = var.discord_application_id
       BOT_TOKEN_PARAM        = aws_ssm_parameter.discord_bot_token.name
+      NOTIFIER_LAMBDA_ARN    = aws_lambda_function.game_ready_notifier.arn
     }
   }
 
@@ -71,6 +72,30 @@ resource "aws_lambda_function" "auto_stop" {
   depends_on = [data.archive_file.auto_stop]
 }
 
+# ─── Game Ready Notifier Lambda ─────────────────────────────────────────────
+
+resource "aws_lambda_function" "game_ready_notifier" {
+  function_name    = "${var.project_name}-game-ready-notifier"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "index.handler"
+  runtime          = "python3.12"
+  filename         = data.archive_file.game_ready_notifier.output_path
+  source_code_hash = data.archive_file.game_ready_notifier.output_base64sha256
+  timeout          = 900
+  memory_size      = 128
+
+  environment {
+    variables = {
+      INSTANCE_ID            = aws_instance.game_server.id
+      AWS_ACCOUNT_REGION     = var.aws_region
+      DISCORD_APPLICATION_ID = var.discord_application_id
+      BOT_TOKEN_PARAM        = aws_ssm_parameter.discord_bot_token.name
+    }
+  }
+
+  depends_on = [data.archive_file.game_ready_notifier]
+}
+
 # ─── CloudWatch Log Groups ───────────────────────────────────────────────────
 
 resource "aws_cloudwatch_log_group" "discord_bot" {
@@ -85,5 +110,10 @@ resource "aws_cloudwatch_log_group" "discord_worker" {
 
 resource "aws_cloudwatch_log_group" "auto_stop" {
   name              = "/aws/lambda/${aws_lambda_function.auto_stop.function_name}"
+  retention_in_days = 7
+}
+
+resource "aws_cloudwatch_log_group" "game_ready_notifier" {
+  name              = "/aws/lambda/${aws_lambda_function.game_ready_notifier.function_name}"
   retention_in_days = 7
 }

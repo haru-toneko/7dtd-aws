@@ -116,7 +116,10 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         Sid    = "InvokeWorkerLambda"
         Effect = "Allow"
         Action = ["lambda:InvokeFunction"]
-        Resource = aws_lambda_function.discord_worker.arn
+        Resource = [
+          aws_lambda_function.discord_worker.arn,
+          aws_lambda_function.game_ready_notifier.arn,
+        ]
       }
     ]
   })
