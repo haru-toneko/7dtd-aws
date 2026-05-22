@@ -124,15 +124,48 @@ if [ ! -f /data/7dtd/config/serverconfig.xml ]; then
   <property name="WebDashboardUrl"             value=""/>
   <property name="EnableMapRendering"          value="false"/>
 
+  <!-- 昼夜サイクル -->
+  <property name="DayNightLength"              value="60"/>
+  <property name="DayCount"                    value="7"/>
+
+  <!-- 経験値 -->
+  <property name="XPMultiplier"                value="100"/>
+  <property name="PartySharedKillRange"        value="100"/>
+
+  <!-- ブロックダメージ -->
+  <property name="BlockDamagePlayer"           value="100"/>
+  <property name="BlockDamageAI"               value="100"/>
+  <property name="BlockDamageAIBM"             value="100"/>
+
+  <!-- ルート -->
+  <property name="LootAbundance"               value="100"/>
+  <property name="LootRespawnDays"             value="30"/>
+
   <!-- ゲームプレイ調整 -->
   <property name="EnemySpawnMode"              value="true"/>
   <property name="EnemyDifficulty"             value="0"/>
   <property name="ZombieMove"                  value="0"/>
   <property name="ZombieMoveNight"             value="3"/>
+  <property name="ZombieBMMove"                value="3"/>
+  <property name="ZombieFeral"                 value="0"/>
+  <property name="ZombieFeralSense"            value="0"/>
   <property name="BloodMoonEnemyCount"         value="8"/>
+  <property name="MaxSpawnedZombies"           value="64"/>
+  <property name="MaxSpawnedAnimals"           value="50"/>
   <property name="DropOnDeath"                 value="1"/>
   <property name="DropOnQuit"                  value="0"/>
   <property name="PlayerKillingMode"           value="0"/>
+
+  <!-- エアドロップ -->
+  <property name="AirDropFrequency"            value="72"/>
+  <property name="AirDropMarker"               value="true"/>
+
+  <!-- 安全ゾーン・その他 -->
+  <property name="PlayerSafeZoneLevel"         value="5"/>
+  <property name="PlayerSafeZoneHours"         value="5"/>
+  <property name="PersistentPlayerProfiles"    value="false"/>
+  <property name="ServerMaxAllowedViewDistance" value="12"/>
+  <property name="BuildCreate"                 value="false"/>
 
 </ServerSettings>
 XMLEOF

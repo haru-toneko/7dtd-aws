@@ -31,7 +31,7 @@ resource "aws_lambda_function" "discord_worker" {
   runtime          = "python3.12"
   filename         = data.archive_file.discord_worker.output_path
   source_code_hash = data.archive_file.discord_worker.output_base64sha256
-  timeout          = 60
+  timeout          = 300
   memory_size      = 256
 
   environment {
