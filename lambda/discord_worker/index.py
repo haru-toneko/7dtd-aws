@@ -128,6 +128,71 @@ SETTINGS_ORDER = [
     'PersistentPlayerProfiles', 'PlayerSafeZoneLevel', 'PlayerSafeZoneHours',
 ]
 
+# デフォルト値 (7DTD 2.x 標準値)
+SETTING_DEFAULTS = {
+    'GameDifficulty':               '2',
+    'GameWorld':                    'Navezgane',
+    'GameName':                     'My Game',
+    'ServerMaxPlayerCount':         '8',
+    'PlayerKillingMode':            '0',
+    'DropOnDeath':                  '1',
+    'DropOnQuit':                   '0',
+    'XPMultiplier':                 '100',
+    'PartySharedKillRange':         '100',
+    'BlockDamagePlayer':            '100',
+    'BlockDamageAI':                '100',
+    'BlockDamageAIBM':              '100',
+    'DayNightLength':               '60',
+    'DayCount':                     '7',
+    'LootAbundance':                '100',
+    'LootRespawnDays':              '30',
+    'EnemySpawnMode':               'true',
+    'EnemyDifficulty':              '0',
+    'ZombieMove':                   '0',
+    'ZombieMoveNight':              '3',
+    'ZombieBMMove':                 '3',
+    'ZombieFeral':                  '3',
+    'ZombieFeralSense':             '0',
+    'BloodMoonEnemyCount':          '8',
+    'MaxSpawnedZombies':            '64',
+    'MaxSpawnedAnimals':            '50',
+    'AirDropFrequency':             '72',
+    'AirDropMarker':                'true',
+    'ServerName':                   'My Game Host',
+    'ServerVisibility':             '2',
+    'ServerMaxAllowedViewDistance': '12',
+    'BuildCreate':                  'false',
+    'PersistentPlayerProfiles':     'false',
+    'PlayerSafeZoneLevel':          '5',
+    'PlayerSafeZoneHours':          '5',
+}
+
+# カテゴリ別 XML プロパティ名リスト
+HELP_CATEGORIES = {
+    'gameplay': [
+        'GameDifficulty', 'DayNightLength', 'DayCount',
+        'XPMultiplier', 'PartySharedKillRange',
+        'BlockDamagePlayer', 'BlockDamageAI', 'BlockDamageAIBM',
+        'LootAbundance', 'LootRespawnDays',
+        'PlayerKillingMode', 'DropOnDeath', 'DropOnQuit',
+    ],
+    'zombies': [
+        'EnemySpawnMode', 'EnemyDifficulty',
+        'ZombieMove', 'ZombieMoveNight', 'ZombieBMMove',
+        'ZombieFeral', 'ZombieFeralSense',
+        'BloodMoonEnemyCount', 'MaxSpawnedZombies', 'MaxSpawnedAnimals',
+    ],
+    'server': [
+        'ServerName', 'ServerVisibility', 'ServerMaxPlayerCount',
+        'AirDropFrequency', 'AirDropMarker',
+        'ServerMaxAllowedViewDistance', 'BuildCreate',
+        'PersistentPlayerProfiles', 'PlayerSafeZoneLevel', 'PlayerSafeZoneHours',
+    ],
+}
+
+# XML名 → Discord オプション名 (逆引き)
+XML_TO_OPTION = {v: k for k, v in SETTING_MAP.items()}
+
 # ─── Discord API ──────────────────────────────────────────────────────────────
 
 def get_bot_token() -> str:
@@ -462,41 +527,53 @@ def handle_status(token: str, data: dict) -> None:
     edit_original_response(token, msg)
 
 
+def _format_help_category(title: str, xml_names: list) -> str:
+    lines = [f'**{title}**']
+    for xml_name in xml_names:
+        label, choices = SETTING_LABELS.get(xml_name, (xml_name, None))
+        opt_name = XML_TO_OPTION.get(xml_name, xml_name)
+        default = SETTING_DEFAULTS.get(xml_name, '?')
+        if choices:
+            parts = []
+            for k, v in choices.items():
+                parts.append(f'**{k}={v}**' if str(k) == default else f'{k}={v}')
+            lines.append(f'`{opt_name}` {label}: {", ".join(parts)}')
+        else:
+            lines.append(f'`{opt_name}` {label}: デフォルト **{default}**')
+    return '\n'.join(lines)
+
+
 def handle_help(token: str, data: dict) -> None:
-    msg = """\
+    options = parse_options(data)
+    category = options.get('category')
+
+    if category == 'gameplay':
+        msg = _format_help_category(
+            'ゲームプレイ設定 (`/start` または `/set gameplay`)',
+            HELP_CATEGORIES['gameplay'],
+        )
+    elif category == 'zombies':
+        msg = _format_help_category(
+            'ゾンビ設定 (`/start` または `/set zombies`)',
+            HELP_CATEGORIES['zombies'],
+        )
+    elif category == 'server':
+        msg = _format_help_category(
+            'サーバー設定 (`/start` または `/set server`)',
+            HELP_CATEGORIES['server'],
+        )
+    else:
+        msg = """\
 **設定可能なオプション一覧**
 
-**/start** `[オプション]` — 起動時に設定を指定
-`difficulty` 難易度(0-5) | `world` マップ | `game_name` セーブ名
-`max_players` 最大人数 | `player_killing` PvP | `drop_on_death` / `drop_on_quit` ドロップ
-`xp_multiplier` XP倍率% | `party_xp_range` 同盟XP共有範囲(ブロック数)
-`block_damage_player` / `block_damage_zombie` / `block_damage_bm` ブロックダメージ%
-`day_length` 1日の長さ(分) | `blood_moon_day` BM周期(日)
-`loot_abundance` ルート量% | `loot_respawn_days` ルート再生成(日)
-`enemy_spawn` 敵スポーン | `enemy_difficulty` 敵強度
-`zombie_day` / `zombie_night` ゾンビ速度 | `blood_moon_count` BM最大数 | `max_zombies` 最大数
-`server_visibility` 公開設定 | `server_name` サーバー名
-
-**/set gameplay** `[オプション]` — 起動中に変更(7DTD再起動)
-`difficulty` `xp_multiplier` `party_xp_range`
-`block_damage_player` `block_damage_zombie` `block_damage_bm`
-`day_length` `blood_moon_day` `loot_abundance` `loot_respawn_days`
-`player_killing` `drop_on_death` `drop_on_quit`
-
-**/set zombies** `[オプション]` — 起動中に変更(7DTD再起動)
-`enemy_spawn` `enemy_difficulty`
-`zombie_day` `zombie_night` `zombie_bm_speed`
-`zombie_feral` `zombie_feral_sense`
-`blood_moon_count` `max_zombies` `max_animals`
-
-**/set server** `[オプション]` — 起動中に変更(7DTD再起動)
-`server_name` `server_visibility` `max_players`
-`airdrop_frequency` `airdrop_marker`
-`view_distance` `creative_mode` `persistent_profiles`
-`safe_zone_level` `safe_zone_hours`
-
+**/start** — 起動時に設定を指定(24オプション)
+**/set gameplay** — XP・BD・ルート・昼夜サイクル・PvP
+**/set zombies** — ゾンビ速度・フェラル・ブラッドムーン
+**/set server** — サーバー表示・エアドロ・安全ゾーン等
 **/settings** — 現在の全設定を表示(サーバー起動中のみ)
-各オプションの詳細説明は `/` を入力してコマンドを選ぶと表示されます。"""
+
+各設定の値とデフォルトを確認:
+`/help category:gameplay` `/help category:zombies` `/help category:server`"""
     edit_original_response(token, msg)
 
 

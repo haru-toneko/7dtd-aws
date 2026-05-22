@@ -570,7 +570,20 @@ COMMANDS = [
     },
     {
         'name': 'help',
-        'description': '設定可能なオプションを一覧表示します。',
+        'description': '設定可能なオプションを一覧表示します。カテゴリを指定すると値とデフォルトも表示します。',
+        'options': [
+            {
+                'name': 'category',
+                'description': '詳細を表示するカテゴリ',
+                'type': 3,
+                'required': False,
+                'choices': [
+                    {'name': 'gameplay — 難易度・XP・ルート・昼夜サイクル等', 'value': 'gameplay'},
+                    {'name': 'zombies — ゾンビ速度・フェラル・ブラッドムーン等', 'value': 'zombies'},
+                    {'name': 'server — サーバー表示・エアドロ・安全ゾーン等',   'value': 'server'},
+                ],
+            },
+        ],
     },
     {
         'name': 'stop',
