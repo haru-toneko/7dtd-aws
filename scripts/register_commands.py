@@ -643,6 +643,7 @@ COMMANDS = [
                     {'name': 'gameplay — 難易度・XP・ルート・昼夜サイクル等', 'value': 'gameplay'},
                     {'name': 'zombies — ゾンビ速度・フェラル・ブラッドムーン等', 'value': 'zombies'},
                     {'name': 'server — サーバー表示・エアドロ・安全ゾーン等',   'value': 'server'},
+                    {'name': 'mod — Modインストール・削除・有効無効切り替え',   'value': 'mod'},
                 ],
             },
         ],

@@ -579,6 +579,32 @@ def handle_help(token: str, data: dict) -> None:
             'サーバー設定 (`/start` または `/set server`)',
             HELP_CATEGORIES['server'],
         )
+    elif category == 'mod':
+        msg = """\
+**Mod管理コマンド (`/mod`)**
+
+`/mod list`
+インストール済みModを有効・無効別に一覧表示。
+
+`/mod add url:<URL> name:<名前>`
+ZIP直リンクURLからModをインストールし、サーバーを再起動。
+・`url`: ZIPのダウンロードURL (7daystodiemods.com、GitHub Releases 等)
+・`name`: Mod名 (英数字・ハイフン・アンダースコア、最大50文字)
+ZIP内のフォルダ構造は自動判定。Assembly-CSharp.dll を含む場合はパッチを自動再適用。
+
+`/mod toggle name:<名前>`
+Modの有効/無効を切り替えてサーバーを再起動。
+有効→無効: ファイルを `Mods.disabled/` に退避 (削除しない)
+無効→有効: `Mods/` に戻す
+
+`/mod remove name:<名前>`
+指定したModを削除してサーバーを再起動 (有効・無効どちらも可)。
+
+`/mod reset`
+全Modを削除してサーバーを再起動。バニラ状態に戻す際に使用。
+
+> Nexus Mods はログインが必要なため URL 指定不可。\
+ZIP を手動でEC2に配置 (`/data/7dtd/server/Mods/<名前>/`) してください。"""
     else:
         msg = """\
 **設定可能なオプション一覧**
@@ -588,9 +614,11 @@ def handle_help(token: str, data: dict) -> None:
 **/set zombies** — ゾンビ速度・フェラル・ブラッドムーン
 **/set server** — サーバー表示・エアドロ・安全ゾーン等
 **/settings** — 現在の全設定を表示(サーバー起動中のみ)
+**/mod** — Modのインストール・削除・有効無効切り替え
 
 各設定の値とデフォルトを確認:
-`/help category:gameplay` `/help category:zombies` `/help category:server`"""
+`/help category:gameplay` `/help category:zombies` `/help category:server`
+Modコマンドの詳細: `/help category:mod`"""
     edit_original_response(token, msg)
 
 
