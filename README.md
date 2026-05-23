@@ -147,6 +147,11 @@ python3 scripts/register_commands.py --list --guild YOUR_GUILD_ID
 | `/settings` | 現在のゲーム設定を一覧表示 (サーバー起動中のみ) |
 | `/stop` | サーバーを停止 |
 | `/status` | 起動状態とIPを確認 |
+| `/mod list` | インストール済みModの一覧を表示 |
+| `/mod add url:<URL> name:<名前>` | ModをZIP URLからインストール (7DTD再起動) |
+| `/mod remove name:<名前>` | 指定したModを削除 (7DTD再起動) |
+| `/mod toggle name:<名前>` | 指定したModの有効/無効を切り替え (7DTD再起動) |
+| `/mod reset` | 全Modを削除 (7DTD再起動) |
 
 ---
 
@@ -320,8 +325,13 @@ Discord の任意のテキストチャンネルで以下を実行:
 | `/settings` | 現在の全ゲーム設定を表示 |
 | `/stop` | サーバーを停止 |
 | `/status` | 現在の状態とIPを返答 |
+| `/mod list` | インストール済みModを一覧表示 |
+| `/mod add url:https://... name:SMXCore` | ModをURLからインストール (7DTD再起動) |
+| `/mod toggle name:SMXCore` | Modの有効/無効を切り替え (7DTD再起動) |
+| `/mod remove name:SMXCore` | Modを削除 (7DTD再起動) |
+| `/mod reset` | 全Modをまとめて削除 (7DTD再起動) |
 
-> `/set` コマンドはサーバー起動中のみ使用可能。停止中は `/start` のオプションで設定を指定する。
+> `/set` と `/mod` はサーバー起動中 (EC2 running) のみ使用可能。停止中は `/start` で起動してから実行する。
 
 ### ゲームへの接続方法
 
@@ -359,6 +369,40 @@ aws logs tail /aws/lambda/7dtd-discord-bot --follow --region ap-northeast-1
 # auto_stop のログ
 aws logs tail /aws/lambda/7dtd-auto-stop --follow --region ap-northeast-1
 ```
+
+### Mod の管理
+
+Mod ファイルは EBS 上の `/data/7dtd/server/Mods/` に永続化される。EC2 を再起動しても消えない。
+
+#### インストール可能な Mod の形式
+
+- **対応:** ZIP 直リンク (7daystodiemods.com、GitHub Releases 等)
+- **非対応:** Nexus Mods (ログイン必須のため自動ダウンロード不可)
+  - Nexus の場合は手動で ZIP をダウンロードし、`aws ssm start-session` で EC2 に入って配置する
+
+ZIP の内部構造は自動判定される。ZIPを展開した中から `ModInfo.xml` を含むフォルダを検出してインストールするため、親フォルダの有無に関わらず動作する。
+
+#### Mod が `Assembly-CSharp.dll` を含む場合
+
+DLL 改変系 Mod をインストールすると `/mod add` が自動的に `patch_assembly.py` を再適用する。
+7DTD 2.6 の Unity バグ修正パッチが維持されるため、通常は追加操作不要。
+
+#### Mod の無効化と有効化
+
+```
+/mod toggle name:ModName
+```
+
+`Mods/ModName/` ↔ `Mods.disabled/ModName/` のフォルダ移動で切り替える。
+ファイルは削除されないため、再度 toggle で復元できる。
+
+#### 全 Mod をまとめてリセット
+
+```
+/mod reset
+```
+
+有効・無効問わず全 Mod を削除する。バニラ状態に戻す際に使用する。
 
 ### ゲームデータのバックアップ
 
@@ -587,6 +631,6 @@ terraform destroy
 │   └── register_commands.py         ← Discord スラッシュコマンド登録スクリプト
 └── lambda/
     ├── discord_bot/index.py         ← 署名検証・deferred response
-    ├── discord_worker/index.py      ← start/stop/status/settings/set 処理・SSM設定書き換え
+    ├── discord_worker/index.py      ← start/stop/status/settings/set/mod 処理・SSM設定書き換え
     └── auto_stop/index.py           ← プレイヤー確認・自動停止
 ```

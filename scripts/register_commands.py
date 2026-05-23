@@ -538,6 +538,68 @@ SET_SERVER_OPTIONS = [
 
 # ─── コマンド定義 ─────────────────────────────────────────────────────────────
 
+MOD_COMMAND = {
+    'name': 'mod',
+    'description': 'Modの管理 (インストール・削除・有効/無効切り替え・リセット)',
+    'options': [
+        {
+            'name': 'list',
+            'description': 'インストール済みModの一覧を表示します',
+            'type': 1,
+        },
+        {
+            'name': 'add',
+            'description': 'ModをURLからインストールします (ZIP直リンク、サーバー再起動)',
+            'type': 1,
+            'options': [
+                {
+                    'name': 'url',
+                    'description': 'ModのダウンロードURL (ZIP直リンク)',
+                    'type': 3,
+                    'required': True,
+                },
+                {
+                    'name': 'name',
+                    'description': 'Mod名 (英数字・ハイフン・アンダースコア、最大50文字)',
+                    'type': 3,
+                    'required': True,
+                },
+            ],
+        },
+        {
+            'name': 'remove',
+            'description': '指定したModを削除します (サーバー再起動)',
+            'type': 1,
+            'options': [
+                {
+                    'name': 'name',
+                    'description': '削除するMod名',
+                    'type': 3,
+                    'required': True,
+                },
+            ],
+        },
+        {
+            'name': 'toggle',
+            'description': '指定したModの有効/無効を切り替えます (サーバー再起動)',
+            'type': 1,
+            'options': [
+                {
+                    'name': 'name',
+                    'description': '切り替えるMod名',
+                    'type': 3,
+                    'required': True,
+                },
+            ],
+        },
+        {
+            'name': 'reset',
+            'description': '全Modを削除します (サーバー再起動)',
+            'type': 1,
+        },
+    ],
+}
+
 COMMANDS = [
     {
         'name': 'start',
@@ -597,6 +659,7 @@ COMMANDS = [
         'name': 'settings',
         'description': '現在のゲーム設定を表示します (サーバー起動中のみ)。',
     },
+    MOD_COMMAND,
 ]
 
 # ─── Discord API ──────────────────────────────────────────────────────────────

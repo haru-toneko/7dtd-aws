@@ -6,6 +6,7 @@ Discord Worker Lambda
 import base64
 import json
 import os
+import re
 import time
 import urllib.request
 import urllib.error
@@ -22,6 +23,10 @@ IDLE_PARAM_NAME = os.environ.get('IDLE_PARAM_NAME', '')
 ec2 = boto3.client('ec2', region_name=AWS_REGION)
 ssm = boto3.client('ssm', region_name=AWS_REGION)
 lambda_client = boto3.client('lambda', region_name=AWS_REGION)
+
+MODS_DIR = '/data/7dtd/server/Mods'
+MODS_DISABLED_DIR = '/data/7dtd/server/Mods.disabled'
+PATCH_SCRIPT = '/opt/7dtd/patch_assembly.py'
 
 DISCORD_API = 'https://discord.com/api/v10'
 
@@ -607,6 +612,233 @@ def handle_settings(token: str, data: dict) -> None:
     edit_original_response(token, format_settings_message(result))
 
 
+# ─── /mod ────────────────────────────────────────────────────────────────────
+
+def handle_mod(token: str, data: dict) -> None:
+    info = get_instance_state()
+    if info['state'] != 'running':
+        state_label = {'stopped': '停止中', 'pending': '起動処理中', 'stopping': '停止処理中'}.get(info['state'], info['state'])
+        edit_original_response(token, f'EC2が{state_label}のためMod操作できません。`/start` で起動してから実行してください。')
+        return
+
+    raw = data.get('options', [])
+    if not raw:
+        edit_original_response(token, 'サブコマンドを指定してください。')
+        return
+    subcommand = raw[0].get('name')
+    sub_opts = {opt['name']: opt['value'] for opt in raw[0].get('options', [])}
+
+    if subcommand == 'list':
+        handle_mod_list(token)
+    elif subcommand == 'add':
+        handle_mod_add(token, sub_opts.get('url', ''), sub_opts.get('name', ''))
+    elif subcommand == 'remove':
+        handle_mod_remove(token, sub_opts.get('name', ''))
+    elif subcommand == 'toggle':
+        handle_mod_toggle(token, sub_opts.get('name', ''))
+    elif subcommand == 'reset':
+        handle_mod_reset(token)
+    else:
+        edit_original_response(token, f'不明なサブコマンド: `{subcommand}`')
+
+
+def handle_mod_list(token: str) -> None:
+    script = """\
+import os
+mods = '/data/7dtd/server/Mods'
+disabled = '/data/7dtd/server/Mods.disabled'
+os.makedirs(mods, exist_ok=True)
+os.makedirs(disabled, exist_ok=True)
+enabled = sorted(d for d in os.listdir(mods) if os.path.isdir(os.path.join(mods, d)))
+dis = sorted(d for d in os.listdir(disabled) if os.path.isdir(os.path.join(disabled, d)))
+print('有効: ' + (', '.join(enabled) if enabled else '(なし)'))
+print('無効: ' + (', '.join(dis) if dis else '(なし)'))
+"""
+    script_b64 = base64.b64encode(script.encode()).decode()
+    commands = [
+        f"printf '%s' '{script_b64}' | base64 -d > /tmp/_7dtd_mod_list.py",
+        'python3 /tmp/_7dtd_mod_list.py',
+        'rm -f /tmp/_7dtd_mod_list.py',
+    ]
+    ok, output = ssm_run(commands, timeout_sec=30)
+    if not ok:
+        edit_original_response(token, f'Mod一覧の取得に失敗しました: {output}')
+        return
+    edit_original_response(token, f'**インストール済みMod**\n{output}')
+
+
+def handle_mod_add(token: str, url: str, name: str) -> None:
+    if not re.match(r'^[a-zA-Z0-9_\-]{1,50}$', name):
+        edit_original_response(token, 'Mod名は英数字・ハイフン・アンダースコア(最大50文字)のみ使用できます。')
+        return
+
+    edit_original_response(token, f'`{name}` をインストール中...')
+
+    params_b64 = base64.b64encode(json.dumps({'url': url, 'name': name}).encode()).decode()
+    script = f"""\
+import json, base64, os, sys, shutil, subprocess, urllib.request
+p = json.loads(base64.b64decode('{params_b64}').decode())
+url, name = p['url'], p['name']
+tmp = '/tmp/7dtd_mod_install'
+mods_dir = '/data/7dtd/server/Mods/' + name
+shutil.rmtree(tmp, ignore_errors=True)
+os.makedirs(tmp + '/extracted', exist_ok=True)
+os.makedirs('/data/7dtd/server/Mods', exist_ok=True)
+print('Downloading ' + url)
+try:
+    req = urllib.request.Request(url, headers={{'User-Agent': 'Mozilla/5.0'}})
+    with urllib.request.urlopen(req, timeout=120) as r, open(tmp + '/mod.zip', 'wb') as f:
+        f.write(r.read())
+except Exception as e:
+    print('ダウンロード失敗: ' + str(e))
+    sys.exit(1)
+result = subprocess.run(
+    ['unzip', '-o', tmp + '/mod.zip', '-d', tmp + '/extracted'],
+    capture_output=True, text=True,
+)
+if result.returncode != 0:
+    print('展開失敗: ' + result.stderr)
+    sys.exit(1)
+mod_dir = None
+for root, dirs, files in os.walk(tmp + '/extracted'):
+    if 'ModInfo.xml' in files:
+        mod_dir = root
+        break
+if not mod_dir:
+    print('ModInfo.xmlが見つかりません (ZIPのフォルダ構造を確認してください)')
+    sys.exit(1)
+shutil.rmtree(mods_dir, ignore_errors=True)
+shutil.copytree(mod_dir, mods_dir)
+has_dll = any('Assembly-CSharp.dll' in files for _, _, files in os.walk(mods_dir))
+if has_dll:
+    r = subprocess.run(['python3', '{PATCH_SCRIPT}'], capture_output=True, text=True)
+    if r.returncode != 0:
+        print('パッチ失敗: ' + r.stderr)
+        sys.exit(1)
+    print('Assembly-CSharp.dll を含むModを検出 → パッチ再適用済み')
+shutil.rmtree(tmp, ignore_errors=True)
+print('インストール完了: ' + name)
+"""
+    script_b64 = base64.b64encode(script.encode()).decode()
+    commands = [
+        f"printf '%s' '{script_b64}' | base64 -d > /tmp/_7dtd_mod_add.py",
+        'python3 /tmp/_7dtd_mod_add.py',
+        'rm -f /tmp/_7dtd_mod_add.py',
+        'systemctl restart 7dtd',
+    ]
+    ok, output = ssm_run(commands, timeout_sec=180)
+    if not ok:
+        edit_original_response(token, f'インストール失敗:\n```\n{output[:1500]}\n```')
+        return
+
+    ip = get_instance_state()['public_ip']
+    edit_original_response(token, f'`{name}` をインストールしました。ゲームの準備ができたら通知します。\nIP: `{ip}:26900`')
+    invoke_notifier(token, ip)
+
+
+def handle_mod_remove(token: str, name: str) -> None:
+    if not re.match(r'^[a-zA-Z0-9_\-]{1,50}$', name):
+        edit_original_response(token, 'Mod名は英数字・ハイフン・アンダースコア(最大50文字)のみ使用できます。')
+        return
+
+    script = f"""\
+import os, sys, shutil
+name = '{name}'
+mods = '/data/7dtd/server/Mods/' + name
+disabled = '/data/7dtd/server/Mods.disabled/' + name
+if not os.path.isdir(mods) and not os.path.isdir(disabled):
+    print('Modが見つかりません: ' + name)
+    sys.exit(1)
+shutil.rmtree(mods, ignore_errors=True)
+shutil.rmtree(disabled, ignore_errors=True)
+print('削除完了: ' + name)
+"""
+    script_b64 = base64.b64encode(script.encode()).decode()
+    commands = [
+        f"printf '%s' '{script_b64}' | base64 -d > /tmp/_7dtd_mod_remove.py",
+        'python3 /tmp/_7dtd_mod_remove.py',
+        'rm -f /tmp/_7dtd_mod_remove.py',
+        'systemctl restart 7dtd',
+    ]
+    ok, output = ssm_run(commands, timeout_sec=90)
+    if not ok:
+        edit_original_response(token, f'削除失敗: {output}')
+        return
+
+    ip = get_instance_state()['public_ip']
+    edit_original_response(token, f'`{name}` を削除しました。ゲームの準備ができたら通知します。\nIP: `{ip}:26900`')
+    invoke_notifier(token, ip)
+
+
+def handle_mod_toggle(token: str, name: str) -> None:
+    if not re.match(r'^[a-zA-Z0-9_\-]{1,50}$', name):
+        edit_original_response(token, 'Mod名は英数字・ハイフン・アンダースコア(最大50文字)のみ使用できます。')
+        return
+
+    script = f"""\
+import os, sys, shutil
+name = '{name}'
+mods = '/data/7dtd/server/Mods/' + name
+disabled = '/data/7dtd/server/Mods.disabled/' + name
+os.makedirs('/data/7dtd/server/Mods.disabled', exist_ok=True)
+if os.path.isdir(mods):
+    shutil.move(mods, disabled)
+    print('無効化: ' + name)
+elif os.path.isdir(disabled):
+    shutil.move(disabled, mods)
+    print('有効化: ' + name)
+else:
+    print('Modが見つかりません: ' + name)
+    sys.exit(1)
+"""
+    script_b64 = base64.b64encode(script.encode()).decode()
+    commands = [
+        f"printf '%s' '{script_b64}' | base64 -d > /tmp/_7dtd_mod_toggle.py",
+        'python3 /tmp/_7dtd_mod_toggle.py',
+        'rm -f /tmp/_7dtd_mod_toggle.py',
+        'systemctl restart 7dtd',
+    ]
+    ok, output = ssm_run(commands, timeout_sec=90)
+    if not ok:
+        edit_original_response(token, f'切り替え失敗: {output}')
+        return
+
+    ip = get_instance_state()['public_ip']
+    action = '無効化' if '無効化' in output else '有効化'
+    edit_original_response(token, f'`{name}` を{action}しました。ゲームの準備ができたら通知します。\nIP: `{ip}:26900`')
+    invoke_notifier(token, ip)
+
+
+def handle_mod_reset(token: str) -> None:
+    script = """\
+import os, shutil
+count = 0
+for d in ['/data/7dtd/server/Mods', '/data/7dtd/server/Mods.disabled']:
+    if os.path.isdir(d):
+        for item in os.listdir(d):
+            p = os.path.join(d, item)
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+                count += 1
+print('全Modを削除しました (' + str(count) + '件)')
+"""
+    script_b64 = base64.b64encode(script.encode()).decode()
+    commands = [
+        f"printf '%s' '{script_b64}' | base64 -d > /tmp/_7dtd_mod_reset.py",
+        'python3 /tmp/_7dtd_mod_reset.py',
+        'rm -f /tmp/_7dtd_mod_reset.py',
+        'systemctl restart 7dtd',
+    ]
+    ok, output = ssm_run(commands, timeout_sec=90)
+    if not ok:
+        edit_original_response(token, f'リセット失敗: {output}')
+        return
+
+    ip = get_instance_state()['public_ip']
+    edit_original_response(token, f'{output}\nゲームの準備ができたら通知します。\nIP: `{ip}:26900`')
+    invoke_notifier(token, ip)
+
+
 COMMAND_HANDLERS = {
     'start':    handle_start,
     'set':      handle_set,
@@ -614,6 +846,7 @@ COMMAND_HANDLERS = {
     'status':   handle_status,
     'settings': handle_settings,
     'help':     handle_help,
+    'mod':      handle_mod,
 }
 
 
