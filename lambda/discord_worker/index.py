@@ -850,15 +850,26 @@ for root, dirs, files in os.walk(tmp + '/extracted'):
     if 'ModInfo.xml' in files:
         total = sum(len(fs) for _, _, fs in os.walk(root))
         candidates.append((total, root))
+        dirs[:] = []  # ModInfo.xml が見つかったら深追いしない
 if not candidates:
     print('ModInfo.xmlが見つかりません (ZIPのフォルダ構造を確認してください)')
     sys.exit(1)
-candidates.sort(key=lambda x: x[0], reverse=True)
-mod_dir = candidates[0][1]
-print('Install from: ' + mod_dir + ' (' + str(candidates[0][0]) + ' files)')
-shutil.rmtree(mods_dir, ignore_errors=True)
-shutil.copytree(mod_dir, mods_dir)
-has_dll = any('Assembly-CSharp.dll' in files for _, _, files in os.walk(mods_dir))
+if len(candidates) == 1:
+    shutil.rmtree(mods_dir, ignore_errors=True)
+    shutil.copytree(candidates[0][1], mods_dir)
+    print('Installed: ' + name)
+    installed_dirs = [mods_dir]
+else:
+    # 複数 mod を含む ZIP: 元のディレクトリ名で全コンポーネントをインストール
+    installed_dirs = []
+    for _, mod_path in candidates:
+        dir_name = os.path.basename(mod_path)
+        dest = '/data/7dtd/server/Mods/' + dir_name
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(mod_path, dest)
+        installed_dirs.append(dest)
+        print('Installed component: ' + dir_name)
+has_dll = any('Assembly-CSharp.dll' in fs for d in installed_dirs for _, _, fs in os.walk(d))
 if has_dll:
     r = subprocess.run(['python3', '{PATCH_SCRIPT}'], capture_output=True, text=True)
     if r.returncode != 0:
