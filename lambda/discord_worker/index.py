@@ -845,14 +845,17 @@ try:
 except Exception as e:
     print('展開失敗: ' + str(e))
     sys.exit(1)
-mod_dir = None
+candidates = []
 for root, dirs, files in os.walk(tmp + '/extracted'):
     if 'ModInfo.xml' in files:
-        mod_dir = root
-        break
-if not mod_dir:
+        total = sum(len(fs) for _, _, fs in os.walk(root))
+        candidates.append((total, root))
+if not candidates:
     print('ModInfo.xmlが見つかりません (ZIPのフォルダ構造を確認してください)')
     sys.exit(1)
+candidates.sort(key=lambda x: x[0], reverse=True)
+mod_dir = candidates[0][1]
+print('Install from: ' + mod_dir + ' (' + str(candidates[0][0]) + ' files)')
 shutil.rmtree(mods_dir, ignore_errors=True)
 shutil.copytree(mod_dir, mods_dir)
 has_dll = any('Assembly-CSharp.dll' in files for _, _, files in os.walk(mods_dir))
