@@ -88,11 +88,9 @@ for i, trow in enumerate(typedefs):
 
         patched.append(f'{tname}.{mname}')
 
-print(f'\nPatched {len(patched)}: {patched}')
-
 if not patched:
-    print('ERROR: No methods patched!')
-    sys.exit(1)
+    print('No patch needed (target methods not found in this version).')
+    sys.exit(0)
 
 bak = path + '.bak'
 shutil.copy(path, bak)
@@ -100,4 +98,5 @@ print(f'Backup: {bak}')
 
 with open(path, 'wb') as f:
     f.write(data)
+print(f'Patched {len(patched)}: {patched}')
 print('Done.')

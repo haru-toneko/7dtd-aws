@@ -261,6 +261,17 @@ START_OPTIONS = [
         'type': 3,
         'required': False,
     },
+    {
+        'name': 'version',
+        'description': 'ゲームバージョン。変更時はゲームファイルを再ダウンロード (20〜40分)',
+        'type': 3,
+        'required': False,
+        'choices': [
+            {'name': 'latest — 最新安定版 (デフォルト)', 'value': 'latest'},
+            {'name': 'experimental — 最新実験的バージョン', 'value': 'experimental'},
+            {'name': 'alpha20.7 — Alpha 20.7 (Undead Legacy 対応)', 'value': 'alpha20.7'},
+        ],
+    },
 ]
 
 # ─── /set サブコマンドのオプション定義 ───────────────────────────────────────

@@ -286,6 +286,7 @@ if [ ! -f /data/7dtd/server/startserver.sh ]; then
   exit 1
 fi
 echo "[INFO] 7DTDダウンロード完了"
+echo 'latest' > /data/7dtd/installed_version
 
 # ─── Docker カスタムイメージビルド ───────────────────────────────────────────
 # ubuntu:20.04 + libgcc-s1 + ca-certificates (ca-certificates がないと Steam SDK が SSL 接続できず
@@ -351,10 +352,12 @@ for i, trow in enumerate(typedefs):
             print(f'PATCH-FAT->TINY {tname}.{mname} @ {off:#x}')
         else: continue
         patched.append(f'{tname}.{mname}')
-print(f'Patched {len(patched)}: {patched}')
-if not patched: sys.exit(1)
+if not patched:
+    print('No patch needed (target methods not found in this version).')
+    sys.exit(0)
 shutil.copy(path, path + '.bak')
 with open(path, 'wb') as f: f.write(data)
+print(f'Patched {{len(patched)}}: {{patched}}')
 print('Done.')
 PYEOF2
 
