@@ -812,7 +812,7 @@ def handle_mod_add(token: str, url: str, name: str) -> None:
 
     params_b64 = base64.b64encode(json.dumps({'url': url, 'name': name}).encode()).decode()
     script = f"""\
-import json, base64, os, sys, shutil, subprocess, urllib.request
+import json, base64, os, sys, shutil, zipfile, subprocess, urllib.request
 p = json.loads(base64.b64decode('{params_b64}').decode())
 url, name = p['url'], p['name']
 tmp = '/tmp/7dtd_mod_install'
@@ -828,12 +828,11 @@ try:
 except Exception as e:
     print('ダウンロード失敗: ' + str(e))
     sys.exit(1)
-result = subprocess.run(
-    ['unzip', '-o', tmp + '/mod.zip', '-d', tmp + '/extracted'],
-    capture_output=True, text=True,
-)
-if result.returncode != 0:
-    print('展開失敗: ' + result.stderr)
+try:
+    with zipfile.ZipFile(tmp + '/mod.zip', 'r') as zf:
+        zf.extractall(tmp + '/extracted')
+except Exception as e:
+    print('展開失敗: ' + str(e))
     sys.exit(1)
 mod_dir = None
 for root, dirs, files in os.walk(tmp + '/extracted'):
@@ -858,9 +857,7 @@ print('インストール完了: ' + name)
     script_b64 = base64.b64encode(script.encode()).decode()
     commands = [
         f"printf '%s' '{script_b64}' | base64 -d > /tmp/_7dtd_mod_add.py",
-        'python3 /tmp/_7dtd_mod_add.py',
-        'rm -f /tmp/_7dtd_mod_add.py',
-        'systemctl restart 7dtd',
+        'python3 /tmp/_7dtd_mod_add.py && rm -f /tmp/_7dtd_mod_add.py && systemctl restart 7dtd',
     ]
     ok, output = ssm_run(commands, timeout_sec=180)
     if not ok:
