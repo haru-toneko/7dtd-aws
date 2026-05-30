@@ -808,7 +808,7 @@ def handle_mod_add(token: str, url: str, name: str) -> None:
         edit_original_response(token, 'Mod名は英数字・ハイフン・アンダースコア(最大50文字)のみ使用できます。')
         return
 
-    edit_original_response(token, f'`{name}` をインストール中...')
+    edit_original_response(token, f'`{name}` をインストール中... 完了したら通知します。')
 
     params_b64 = base64.b64encode(json.dumps({'url': url, 'name': name}).encode()).decode()
     script = f"""\
@@ -823,7 +823,7 @@ os.makedirs('/data/7dtd/server/Mods', exist_ok=True)
 print('Downloading ' + url)
 try:
     req = urllib.request.Request(url, headers={{'User-Agent': 'Mozilla/5.0'}})
-    with urllib.request.urlopen(req, timeout=120) as r, open(tmp + '/mod.zip', 'wb') as f:
+    with urllib.request.urlopen(req, timeout=300) as r, open(tmp + '/mod.zip', 'wb') as f:
         f.write(r.read())
 except Exception as e:
     print('ダウンロード失敗: ' + str(e))
@@ -857,15 +857,16 @@ print('インストール完了: ' + name)
     script_b64 = base64.b64encode(script.encode()).decode()
     commands = [
         f"printf '%s' '{script_b64}' | base64 -d > /tmp/_7dtd_mod_add.py",
-        'python3 /tmp/_7dtd_mod_add.py && rm -f /tmp/_7dtd_mod_add.py && systemctl restart 7dtd',
+        "nohup bash -c 'python3 /tmp/_7dtd_mod_add.py && systemctl restart 7dtd' > /var/log/7dtd-mod-install.log 2>&1 &",
+        'echo "Started: $!"',
     ]
-    ok, output = ssm_run(commands, timeout_sec=180)
+    ok, output = ssm_run(commands, timeout_sec=30)
     if not ok:
-        edit_original_response(token, f'インストール失敗:\n```\n{output[:1500]}\n```')
+        edit_original_response(token, f'インストール開始に失敗しました: {output}')
         return
 
     ip = get_instance_state()['public_ip']
-    edit_original_response(token, f'`{name}` をインストールしました。ゲームの準備ができたら通知します。\nIP: `{ip}:26900`')
+    edit_original_response(token, f'`{name}` のインストールを開始しました。完了したら通知します。\nIP: `{ip}:26900`')
     invoke_notifier(token, ip)
 
 
