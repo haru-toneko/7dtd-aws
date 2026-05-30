@@ -734,6 +734,17 @@ if [ "$success" != "true" ]; then
   exit 1
 fi
 python3 {PATCH_SCRIPT} || true
+if [ "{version}" = "alpha20.7" ]; then
+  python3 -c "
+import re
+path = '/data/7dtd/config/serverconfig.xml'
+content = open(path).read()
+for prop in ['WebDashboardEnabled','WebDashboardPort','WebDashboardUrl','EnableMapRendering']:
+    content = re.sub(r'[^\n]*<property name=\"' + prop + r'\"[^\n]*\n', '', content)
+open(path, 'w').write(content)
+print('Removed A20-incompatible properties')
+"
+fi
 echo '{version}' > {INSTALLED_VERSION_FILE}
 systemctl start 7dtd
 echo "[$(date)] Version update complete: {version}"
