@@ -583,7 +583,14 @@ def handle_status(token: str, data: dict) -> None:
     }.get(state, state)
 
     if state == 'running' and info['public_ip']:
-        msg = f'状態: {state_label}\nIP: `{info["public_ip"]}:26900`'
+        ok_v, ver_out = ssm_run(
+            [f'cat {INSTALLED_VERSION_FILE} 2>/dev/null || echo unknown'],
+            timeout_sec=30,
+        )
+        installed_ver = ver_out.strip() if ok_v else 'unknown'
+        msg = (f'状態: {state_label}\n'
+               f'IP: `{info["public_ip"]}:26900`\n'
+               f'バージョン: `{installed_ver}`')
     else:
         msg = f'状態: {state_label}'
 
@@ -689,7 +696,13 @@ def handle_settings(token: str, data: dict) -> None:
         edit_original_response(token, f'設定の読み取りに失敗しました: {result}')
         return
 
-    edit_original_response(token, format_settings_message(result))
+    ok_v, ver_out = ssm_run(
+        [f'cat {INSTALLED_VERSION_FILE} 2>/dev/null || echo unknown'],
+        timeout_sec=30,
+    )
+    installed_ver = ver_out.strip() if ok_v else 'unknown'
+    msg = format_settings_message(result) + f'\n**ゲームバージョン**: `{installed_ver}`'
+    edit_original_response(token, msg)
 
 
 # ─── バージョン管理 ───────────────────────────────────────────────────────────
