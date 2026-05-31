@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xml>
+  <ModInfo>
+    <Name value="ULVersionFix"/>
+    <Description value="Fixes Undead Legacy version advertisement on dedicated servers"/>
+    <Author value="fix"/>
+    <Version value="1"/>
+    <Website value=""/>
+  </ModInfo>
+</xml>

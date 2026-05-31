@@ -1,9 +1,12 @@
 locals {
   user_data = base64encode(templatefile("${path.module}/../scripts/user_data.sh", {
-    server_name  = var.server_name
-    max_players  = var.max_players
-    game_world   = var.game_world
-    aws_region   = var.aws_region
+    server_name          = var.server_name
+    max_players          = var.max_players
+    game_world           = var.game_world
+    game_name            = var.game_name
+    aws_region           = var.aws_region
+    steam_branch         = var.steam_branch
+    apply_assembly_patch = var.apply_assembly_patch
   }))
 }
 

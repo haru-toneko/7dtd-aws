@@ -5,7 +5,10 @@ set -euo pipefail
 SERVER_NAME="${server_name}"
 MAX_PLAYERS="${max_players}"
 GAME_WORLD="${game_world}"
+GAME_NAME="${game_name}"
 AWS_REGION="${aws_region}"
+STEAM_BRANCH="${steam_branch}"          # 例: alpha20.7 / public(=2.6) / alpha21.2
+APPLY_ASSEMBLY_PATCH="${apply_assembly_patch}"  # true=7DTD 2.6 Linux用パッチ適用
 
 LOG=/var/log/7dtd-setup.log
 exec > >(tee -a "$LOG") 2>&1
@@ -109,7 +112,7 @@ if [ ! -f /data/7dtd/config/serverconfig.xml ]; then
 
   <!-- ゲーム設定 -->
   <property name="GameWorld"                   value="$GAME_WORLD"/>
-  <property name="GameName"                    value="Friends"/>
+  <property name="GameName"                    value="$GAME_NAME"/>
   <property name="GameMode"                    value="GameModeSurvival"/>
   <property name="GameDifficulty"              value="2"/>
 
@@ -262,9 +265,18 @@ curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.g
 sleep 10
 
 echo "[INFO] 7DTDをダウンロード中 (初回は20〜40分かかります)..."
+echo "[INFO] Steamブランチ: $STEAM_BRANCH"
 mkdir -p /data/7dtd/server
+
+# ブランチ引数の組み立て
+# public / 空 → 最新安定版(2.6)。alpha20.7 → UL 2.6.17対応版
+if [ "$STEAM_BRANCH" = "public" ] || [ -z "$STEAM_BRANCH" ]; then
+  BRANCH_ARG="+app_update 294420 validate"
+else
+  BRANCH_ARG="+app_update 294420 -beta $STEAM_BRANCH validate"
+fi
+
 # SteamCMD は失敗時も exit 0 を返すため startserver.sh の存在でダウンロード成否を判定する
-# "Missing configuration" は Steam 側の一時的な問題で複数回リトライすれば解消することが多い
 MAX_ATTEMPTS=6
 for attempt in $(seq 1 $MAX_ATTEMPTS); do
   echo "[INFO] SteamCMD 試行 $attempt/$MAX_ATTEMPTS..."
@@ -272,7 +284,7 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
     +@sSteamCmdForcePlatformType linux \
     +force_install_dir /data/7dtd/server \
     +login anonymous \
-    +app_update 294420 validate \
+    $BRANCH_ARG \
     +quit
   if [ -f /data/7dtd/server/startserver.sh ]; then
     echo "[INFO] 7DTDダウンロード成功"
@@ -286,7 +298,7 @@ if [ ! -f /data/7dtd/server/startserver.sh ]; then
   exit 1
 fi
 echo "[INFO] 7DTDダウンロード完了"
-echo 'latest' > /data/7dtd/installed_version
+echo "$STEAM_BRANCH" > /data/7dtd/installed_version
 
 # ─── Docker カスタムイメージビルド ───────────────────────────────────────────
 # ubuntu:20.04 + libgcc-s1 + ca-certificates (ca-certificates がないと Steam SDK が SSL 接続できず
@@ -361,8 +373,15 @@ print(f'Patched {{len(patched)}}: {{patched}}')
 print('Done.')
 PYEOF2
 
-if [ -f /data/7dtd/server/7DaysToDieServer_Data/Managed/Assembly-CSharp.dll ]; then
-  python3 /opt/7dtd/patch_assembly.py
+# Assembly-CSharp.dll パッチ (7DTD 2.6 Linux専用・Alpha 20.7では不要)
+# apply_assembly_patch=true の場合のみ実行
+if [ "$APPLY_ASSEMBLY_PATCH" = "true" ]; then
+  if [ -f /data/7dtd/server/7DaysToDieServer_Data/Managed/Assembly-CSharp.dll ]; then
+    echo "[INFO] Assembly-CSharp.dll パッチ適用中..."
+    python3 /opt/7dtd/patch_assembly.py
+  fi
+else
+  echo "[INFO] Assembly-CSharp.dll パッチはスキップ (STEAM_BRANCH=$STEAM_BRANCH)"
 fi
 
 # ─── systemd サービス登録 (Docker コンテナ管理) ──────────────────────────────

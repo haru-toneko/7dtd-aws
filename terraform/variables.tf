@@ -41,9 +41,27 @@ variable "max_players" {
 }
 
 variable "game_world" {
-  description = "ゲームワールド名 (Pregen06k01/Pregen06k02/Pregen08k01/Pregen08k02/Navezgane) ※RWGはrwgmixerバグで使用不可"
+  description = "ゲームワールド名 (Pregen06k01/Pregen06k02/Pregen08k01/Pregen08k02/Navezgane) ※RWGはrwgmixerバグで使用不可(7DTD 2.6のみ)"
   type        = string
-  default     = "Pregen08k01"
+  default     = "Navezgane"
+}
+
+variable "game_name" {
+  description = "セーブデータフォルダ名 (UL使用時は 'Undead-Legacy' 推奨)"
+  type        = string
+  default     = "Undead-Legacy"
+}
+
+variable "steam_branch" {
+  description = "SteamCMDブランチ。'public'=最新安定版(2.6), 'alpha20.7'=Alpha 20.7(UL 2.6.17対応), 'alpha21.2'=Alpha 21.2"
+  type        = string
+  default     = "alpha20.7"
+}
+
+variable "apply_assembly_patch" {
+  description = "Assembly-CSharp.dllパッチを適用するか。7DTD 2.6 Linux専用サーバーのMonoBehaviourバグ対策。Alpha 20.7では不要"
+  type        = bool
+  default     = false
 }
 
 variable "auto_stop_idle_minutes" {
