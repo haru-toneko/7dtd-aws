@@ -6,8 +6,9 @@ locals {
     game_name            = var.game_name
     aws_region           = var.aws_region
     steam_branch         = var.steam_branch
-    apply_assembly_patch = var.apply_assembly_patch
-    ul_assembly_s3_path  = var.ul_assembly_s3_path
+    apply_assembly_patch          = var.apply_assembly_patch
+    use_bepinex                   = var.use_bepinex
+    bepinex_multifolderloader_s3  = var.bepinex_multifolderloader_s3
   }))
 }
 

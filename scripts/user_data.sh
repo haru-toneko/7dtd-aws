@@ -8,8 +8,9 @@ GAME_WORLD="${game_world}"
 GAME_NAME="${game_name}"
 AWS_REGION="${aws_region}"
 STEAM_BRANCH="${steam_branch}"          # 例: alpha20.7 / public(=2.6) / alpha21.2
-APPLY_ASSEMBLY_PATCH="${apply_assembly_patch}"  # true=7DTD 2.6 Linux用パッチ適用
-UL_ASSEMBLY_S3_PATH="${ul_assembly_s3_path}"   # ULパッチ済みDLLのS3パス (空=スキップ)
+APPLY_ASSEMBLY_PATCH="${apply_assembly_patch}"        # true=7DTD 2.6 Linux用パッチ適用
+USE_BEPINEX="${use_bepinex}"                         # true=BepInEx Doorstop使用 (UL等)
+BEPINEX_MULTIFOLDERLOADER_S3="${bepinex_multifolderloader_s3}"  # MultiFolderLoader.dllのS3パス
 
 LOG=/var/log/7dtd-setup.log
 exec > >(tee -a "$LOG") 2>&1
@@ -374,19 +375,72 @@ print(f'Patched {{len(patched)}}: {{patched}}')
 print('Done.')
 PYEOF2
 
-# ─── UL用 Assembly-CSharp.dll をS3から取得 ───────────────────────────────────
-# Undead Legacy はバニラのAssembly-CSharp.dllにない enum値(VehicleCargoCapacity等)を必要とする。
-# クライアントのULインストーラーがパッチ済みDLLを配置するため、同DLLをサーバーにも配置する。
-# 取得方法: クライアントの 7DaysToDie_Data/Managed/Assembly-CSharp.dll を S3 にアップロードして
-# ul_assembly_s3_path に指定する。EC2 IAM ロールに S3 読み取り権限が付与される。
-MANAGED=/data/7dtd/server/7DaysToDieServer_Data/Managed
-if [ -n "$UL_ASSEMBLY_S3_PATH" ]; then
-  echo "[INFO] ULパッチ済みAssembly-CSharp.dllをS3から取得: $UL_ASSEMBLY_S3_PATH"
-  cp "$MANAGED/Assembly-CSharp.dll" "$MANAGED/Assembly-CSharp.dll.vanilla-bak"
-  aws s3 cp "$UL_ASSEMBLY_S3_PATH" "$MANAGED/Assembly-CSharp.dll" --region "$AWS_REGION"
-  echo "[INFO] Assembly-CSharp.dll (UL版) 配置完了: $(ls -la $MANAGED/Assembly-CSharp.dll)"
-else
-  echo "[INFO] UL_ASSEMBLY_S3_PATH 未設定 → Assembly-CSharp.dll はバニラのまま"
+# ─── BepInEx セットアップ (UL等BepInEx依存mod使用時) ─────────────────────────
+# BepInEx Doorstop が Unity Mono ランタイムにフックし、
+# BepInEx.MultiFolderLoader が Mods/ 配下のプリパッチャーを実行して
+# Assembly-CSharp.dll をランタイムで修正する（ファイル差替えは不要）。
+#
+# UL 2.6.17 の場合: Mods/UndeadLegacy/UndeadLegacy.dll に内蔵された Patcher が
+# VehicleCargoCapacity / StatWeightMax 等のenum値を Assembly-CSharp に追加する。
+# これにより items.xml / entityclasses.xml 等が正常にロードされプレイヤーがスポーンできる。
+if [ "$USE_BEPINEX" = "true" ]; then
+  echo "[INFO] BepInEx セットアップ中..."
+  BEPINEX_VER="5.4.18"
+
+  # BepInEx Unix リリースをダウンロード (core DLLs + libdoorstop_x64.so)
+  curl -sL "https://github.com/BepInEx/BepInEx/releases/download/v${BEPINEX_VER}/BepInEx_unix_${BEPINEX_VER}.0.zip" \
+    -o /tmp/bepinex_unix.zip
+  python3 -c "import zipfile; zipfile.ZipFile('/tmp/bepinex_unix.zip').extractall('/tmp/bepinex_unix/')"
+
+  mkdir -p /data/7dtd/server/BepInEx/core \
+           /data/7dtd/server/BepInEx/patchers \
+           /data/7dtd/server/doorstop_libs
+
+  cp /tmp/bepinex_unix/BepInEx/core/*.dll /data/7dtd/server/BepInEx/core/
+  cp /tmp/bepinex_unix/doorstop_libs/libdoorstop_x64.so /data/7dtd/server/doorstop_libs/
+
+  # MultiFolderLoader.dll をS3から取得 (Mods/配下のプリパッチャーを発見するBepInEx拡張)
+  if [ -n "$BEPINEX_MULTIFOLDERLOADER_S3" ]; then
+    aws s3 cp "$BEPINEX_MULTIFOLDERLOADER_S3" \
+      /data/7dtd/server/BepInEx/patchers/BepInEx.MultiFolderLoader.dll \
+      --region "$AWS_REGION"
+    echo "[INFO] BepInEx.MultiFolderLoader.dll 配置完了"
+  fi
+
+  # doorstop_config.ini (MultiFolderLoader がMods/を認識するために必須)
+  cat > /data/7dtd/server/doorstop_config.ini << 'INICOF'
+[UnityDoorstop]
+enabled=true
+targetAssembly=BepInEx/core/BepInEx.Preloader.dll
+redirectOutputLog=false
+ignoreDisableSwitch=false
+dllSearchPathOverride=BepInEx/core
+
+[MultiFolderLoader]
+baseDir = Mods/
+INICOF
+
+  # BepInEx 起動ラッパースクリプト
+  # startserver.sh (shスクリプト) を経由すると LD_PRELOAD が sh プロセスに影響してクラッシュするため
+  # ゲームバイナリを直接 exec する。libdl.so.2 を先に読み込んで dlopen シンボルを解決する。
+  cat > /data/7dtd/server/startserver_bepinex.sh << 'BEPSCRIPT'
+#!/bin/bash
+BASEDIR="$(cd "$(dirname "$0")" && pwd)"
+LOGFILE="$BASEDIR/7DaysToDieServer_Data/output_log__$(date +%Y-%m-%d__%H-%M-%S).txt"
+export DOORSTOP_ENABLE=TRUE
+export DOORSTOP_INVOKE_DLL_PATH="$BASEDIR/BepInEx/core/BepInEx.Preloader.dll"
+export DOORSTOP_CORLIB_OVERRIDE_PATH="$BASEDIR/BepInEx/core"
+export LD_LIBRARY_PATH="$BASEDIR/doorstop_libs:."
+export LD_PRELOAD="libdl.so.2:$BASEDIR/doorstop_libs/libdoorstop_x64.so"
+cd "$BASEDIR"
+echo "[BepInEx] Starting 7DaysToDieServer with Doorstop..."
+exec ./7DaysToDieServer.x86_64 \
+    -logfile "$LOGFILE" \
+    -quit -batchmode -nographics -dedicated \
+    "$@"
+BEPSCRIPT
+  chmod +x /data/7dtd/server/startserver_bepinex.sh
+  echo "[INFO] BepInEx セットアップ完了"
 fi
 
 # ─── Assembly-CSharp.dll パッチ (7DTD 2.6 Linux専用・Alpha 20.7では不要) ────
@@ -400,7 +454,18 @@ else
   echo "[INFO] Assembly-CSharp.dll パッチはスキップ (STEAM_BRANCH=$STEAM_BRANCH)"
 fi
 
+# 起動スクリプト選択 (BepInEx使用時はラッパー経由)
+if [ "$USE_BEPINEX" = "true" ]; then
+  STARTUP_SCRIPT="/server/startserver_bepinex.sh"
+  echo "[INFO] 起動スクリプト: startserver_bepinex.sh (BepInEx Doorstop有効)"
+else
+  STARTUP_SCRIPT="/server/startserver.sh"
+  echo "[INFO] 起動スクリプト: startserver.sh (標準)"
+fi
+
 # ─── systemd サービス登録 (Docker コンテナ管理) ──────────────────────────────
+# STARTUP_SCRIPT は先に決定済み (/server/startserver_bepinex.sh or /server/startserver.sh)
+# heredoc をシングルクォートで囲むと変数展開されないため、プレースホルダを sed で置換する
 cat > /etc/systemd/system/7dtd.service << 'SVCEOF'
 [Unit]
 Description=7 Days to Die Dedicated Server (Docker ubuntu:20.04)
@@ -419,7 +484,7 @@ ExecStart=/usr/bin/docker run --name 7dtd --rm \
   -v /data/7dtd/config:/config \
   -v /data/7dtd/userdata:/root/.local/share/7DaysToDie \
   -w /server 7dtd-local:latest \
-  /server/startserver.sh -configfile=/config/serverconfig.xml
+  __STARTUP_SCRIPT__ -configfile=/config/serverconfig.xml
 ExecStop=/usr/bin/docker stop 7dtd
 StandardOutput=journal
 StandardError=journal
@@ -427,6 +492,8 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 SVCEOF
+# プレースホルダを実際のパスに置換
+sed -i "s|__STARTUP_SCRIPT__|$STARTUP_SCRIPT|g" /etc/systemd/system/7dtd.service
 
 systemctl daemon-reload
 systemctl enable 7dtd

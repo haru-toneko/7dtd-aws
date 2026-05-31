@@ -42,7 +42,7 @@ resource "aws_iam_role_policy" "ec2_ssm_params" {
 }
 
 resource "aws_iam_role_policy" "ec2_s3_assets" {
-  count = var.ul_assembly_s3_path != "" ? 1 : 0
+  count = var.bepinex_multifolderloader_s3 != "" ? 1 : 0
   name  = "${var.project_name}-ec2-s3-assets"
   role  = aws_iam_role.ec2_role.id
 
@@ -51,7 +51,7 @@ resource "aws_iam_role_policy" "ec2_s3_assets" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["s3:GetObject"]
-      Resource = "arn:aws:s3:::${replace(replace(var.ul_assembly_s3_path, "s3://", ""), "/", "/*")}"
+      Resource = "arn:aws:s3:::${replace(replace(var.bepinex_multifolderloader_s3, "s3://", ""), "/", "/*")}"
     }]
   })
 }

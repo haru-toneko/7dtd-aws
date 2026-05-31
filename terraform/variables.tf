@@ -64,8 +64,14 @@ variable "apply_assembly_patch" {
   default     = false
 }
 
-variable "ul_assembly_s3_path" {
-  description = "ULパッチ済みAssembly-CSharp.dllのS3パス (例: s3://bucket/Assembly-CSharp-UL.dll)。UL使用時に必須。クライアントのゲームフォルダから取得してS3に配置する"
+variable "use_bepinex" {
+  description = "BepInExを使用するか。Undead Legacy等のBepInEx依存modを使う場合はtrue。BepInEx Doorstopが起動時にAssembly-CSharp.dllをランタイムパッチする"
+  type        = bool
+  default     = false
+}
+
+variable "bepinex_multifolderloader_s3" {
+  description = "BepInEx.MultiFolderLoader.dllのS3パス。use_bepinex=trueの場合に必要。Mods/配下のプリパッチャーをロードするBepInEx拡張。例: s3://bucket/BepInEx.MultiFolderLoader.dll"
   type        = string
   default     = ""
 }
