@@ -7,6 +7,7 @@ locals {
     aws_region           = var.aws_region
     steam_branch         = var.steam_branch
     apply_assembly_patch = var.apply_assembly_patch
+    ul_assembly_s3_path  = var.ul_assembly_s3_path
   }))
 }
 

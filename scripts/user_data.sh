@@ -9,6 +9,7 @@ GAME_NAME="${game_name}"
 AWS_REGION="${aws_region}"
 STEAM_BRANCH="${steam_branch}"          # 例: alpha20.7 / public(=2.6) / alpha21.2
 APPLY_ASSEMBLY_PATCH="${apply_assembly_patch}"  # true=7DTD 2.6 Linux用パッチ適用
+UL_ASSEMBLY_S3_PATH="${ul_assembly_s3_path}"   # ULパッチ済みDLLのS3パス (空=スキップ)
 
 LOG=/var/log/7dtd-setup.log
 exec > >(tee -a "$LOG") 2>&1
@@ -373,7 +374,22 @@ print(f'Patched {{len(patched)}}: {{patched}}')
 print('Done.')
 PYEOF2
 
-# Assembly-CSharp.dll パッチ (7DTD 2.6 Linux専用・Alpha 20.7では不要)
+# ─── UL用 Assembly-CSharp.dll をS3から取得 ───────────────────────────────────
+# Undead Legacy はバニラのAssembly-CSharp.dllにない enum値(VehicleCargoCapacity等)を必要とする。
+# クライアントのULインストーラーがパッチ済みDLLを配置するため、同DLLをサーバーにも配置する。
+# 取得方法: クライアントの 7DaysToDie_Data/Managed/Assembly-CSharp.dll を S3 にアップロードして
+# ul_assembly_s3_path に指定する。EC2 IAM ロールに S3 読み取り権限が付与される。
+MANAGED=/data/7dtd/server/7DaysToDieServer_Data/Managed
+if [ -n "$UL_ASSEMBLY_S3_PATH" ]; then
+  echo "[INFO] ULパッチ済みAssembly-CSharp.dllをS3から取得: $UL_ASSEMBLY_S3_PATH"
+  cp "$MANAGED/Assembly-CSharp.dll" "$MANAGED/Assembly-CSharp.dll.vanilla-bak"
+  aws s3 cp "$UL_ASSEMBLY_S3_PATH" "$MANAGED/Assembly-CSharp.dll" --region "$AWS_REGION"
+  echo "[INFO] Assembly-CSharp.dll (UL版) 配置完了: $(ls -la $MANAGED/Assembly-CSharp.dll)"
+else
+  echo "[INFO] UL_ASSEMBLY_S3_PATH 未設定 → Assembly-CSharp.dll はバニラのまま"
+fi
+
+# ─── Assembly-CSharp.dll パッチ (7DTD 2.6 Linux専用・Alpha 20.7では不要) ────
 # apply_assembly_patch=true の場合のみ実行
 if [ "$APPLY_ASSEMBLY_PATCH" = "true" ]; then
   if [ -f /data/7dtd/server/7DaysToDieServer_Data/Managed/Assembly-CSharp.dll ]; then

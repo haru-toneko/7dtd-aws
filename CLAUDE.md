@@ -26,13 +26,50 @@ EventBridge(5分毎) ─► Lambda(auto_stop) ──────────► 
 
 ## ゲームバージョン互換性マトリクス
 
-| steam_branch | ゲームバージョン | Undead Legacy | Assembly patch | serverconfig 注意 |
-|---|---|---|---|---|
-| `alpha20.7` | Alpha 20.7 b1 | **2.6.17 対応** ✅ | 不要 | なし |
-| `alpha21.2` | Alpha 21.2 | 未対応 | 不要 (未検証) | 未調査 |
-| `public` / `v2.6` | 7DTD 2.6 | **未対応** ❌ (2.7 開発中) | **必要** | NetworkingProtocol 他 4 項目を削除 |
+| steam_branch | ゲームバージョン | Undead Legacy | Assembly patch | UL用DLL差替 | serverconfig 注意 |
+|---|---|---|---|---|---|
+| `alpha20.7` | Alpha 20.7 b1 | **2.6.17 対応** ✅ | 不要 | **必要** ⚠️ | なし |
+| `alpha21.2` | Alpha 21.2 | 未対応 | 不要 (未検証) | 未調査 | 未調査 |
+| `public` / `v2.6` | 7DTD 2.6 | **未対応** ❌ | **必要** | 不要 | NetworkingProtocol 他 4 項目を削除 |
 
-**現在の設定:** `steam_branch = "alpha20.7"`, `apply_assembly_patch = false`
+**現在の設定:** `steam_branch = "alpha20.7"`, `apply_assembly_patch = false`, `ul_assembly_s3_path = "s3://7dtd-tmp-transfer-1780123844/Assembly-CSharp-UL.dll"`
+
+### ⚠️ UL使用時の必須作業: Assembly-CSharp.dll 差し替え
+
+UL 2.6.17 はバニラの Alpha 20.7 DLL に存在しない enum 値を参照するため、**クライアントの UL インストーラーが配置したパッチ済み DLL をサーバーにも配置する必要がある。**
+
+不足している enum 値の例:
+- `VehicleCargoCapacity` → items.xml のパース失敗
+- `StatWeightMax` → entityclasses.xml のパース失敗
+
+これらが欠けると items.xml / entityclasses.xml 等が全滅し、エンティティタイプが未登録になってプレイヤーがスポーン不能になる。
+
+**DLL の取得と配置手順:**
+
+```powershell
+# 1. クライアントのULパッチ済みDLLをS3にアップロード
+aws s3 cp "C:\7D2D\Alpha20\Undead_Legacy\Undead_Legacy_Experimental\7DaysToDie_Data\Managed\Assembly-CSharp.dll" `
+  "s3://7dtd-tmp-transfer-1780123844/Assembly-CSharp-UL.dll"
+
+# 2. バニラ版とサイズが異なることを確認 (パッチ済み: 7,633,408 bytes)
+```
+
+```bash
+# サーバー上での手動差し替え (terraform 未使用時)
+MANAGED=/data/7dtd/server/7DaysToDieServer_Data/Managed
+systemctl stop 7dtd
+cp $MANAGED/Assembly-CSharp.dll $MANAGED/Assembly-CSharp.dll.vanilla-bak
+
+# presigned URL 経由 (EC2にS3権限がない場合)
+URL=$(aws s3 presign s3://7dtd-tmp-transfer-1780123844/Assembly-CSharp-UL.dll --expires-in 600)
+curl -s -o $MANAGED/Assembly-CSharp.dll "$URL"
+systemctl start 7dtd
+```
+
+Terraform 経由 (自動化): `terraform.tfvars` に以下を追加するとEC2起動時に自動取得:
+```hcl
+ul_assembly_s3_path = "s3://7dtd-tmp-transfer-1780123844/Assembly-CSharp-UL.dll"
+```
 
 ---
 
@@ -256,10 +293,13 @@ grep "PlayerSpawn"                # プレイヤースポーン確認
 |---|---|---|
 | `Startup aborted` | serverconfig.xml に不正プロパティ | バージョン別の除外プロパティを確認 |
 | `[EOS] Created RFS Request` で停止 | Assembly patch 不足 (2.6) | `apply_assembly_patch = true` |
+| `XML loader: items.xml failed` + `VehicleCargoCapacity not found` | ULパッチ済みDLL未配置 | クライアントのDLLをサーバーに配置 |
+| `EntityFactory CreateEntity: unknown type` | entityclasses.xml 未ロード (上記DLL問題の連鎖) | 同上 |
 | `GetLength() NullReference` | UL パッケージ登録失敗 | ULVersionFix の NpmSetupPostfix を確認 |
 | `#4 failed: IL Compile Error` | SetValuePostfix が A20.7 で使えない | 無視してよい (実害なし) |
 | `write: null entry skipped` | write() スキップ → カウント不一致 | NpmWritePrefix を削除し NpmSetupPostfix を使う |
 | client Timeout (7 秒) | プロトコル / バージョン不一致 | ゲームバージョンと UL バージョンを揃える |
+| ロード画面で20分以上ハング | entityclasses.xml 未ロード → スポーン失敗 | ULパッチ済みDLLをサーバーに配置 |
 
 ---
 

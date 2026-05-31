@@ -41,6 +41,21 @@ resource "aws_iam_role_policy" "ec2_ssm_params" {
   })
 }
 
+resource "aws_iam_role_policy" "ec2_s3_assets" {
+  count = var.ul_assembly_s3_path != "" ? 1 : 0
+  name  = "${var.project_name}-ec2-s3-assets"
+  role  = aws_iam_role.ec2_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = "arn:aws:s3:::${replace(replace(var.ul_assembly_s3_path, "s3://", ""), "/", "/*")}"
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "${var.project_name}-ec2-profile"
   role = aws_iam_role.ec2_role.name

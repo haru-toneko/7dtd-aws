@@ -64,6 +64,12 @@ variable "apply_assembly_patch" {
   default     = false
 }
 
+variable "ul_assembly_s3_path" {
+  description = "ULパッチ済みAssembly-CSharp.dllのS3パス (例: s3://bucket/Assembly-CSharp-UL.dll)。UL使用時に必須。クライアントのゲームフォルダから取得してS3に配置する"
+  type        = string
+  default     = ""
+}
+
 variable "auto_stop_idle_minutes" {
   description = "プレイヤー0人が続いたら自動停止するまでの分数"
   type        = number
